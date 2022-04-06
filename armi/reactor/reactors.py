@@ -2285,19 +2285,6 @@ class Core(composites.Composite):
         self.getNuclideCategories()
         
         # some blocks will not move in the core like grid plates... Find them and fix them in place
-        # check if user has set case setting
-        if not cs["stationaryBlockFlags"]:
-        
-        
-        
-         
-         
-         
-         
-        
-        
-        
-        # some blocks will not move in the core like grid plates... Find them and fix them in place
         stationaryBlocks = []
         # look for blocks that should not be shuffled in an assembly.  It is assumed that the
         # reference assembly has all the fixed block information and it is the same for all assemblies
