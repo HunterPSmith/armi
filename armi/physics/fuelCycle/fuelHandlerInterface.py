@@ -5,6 +5,7 @@ from armi import runLog
 from armi.physics.fuelCycle import fuelHandlers
 
 
+
 class FuelHandlerInterface(interfaces.Interface):
     """
     Moves and/or processes fuel in a Standard Operator.

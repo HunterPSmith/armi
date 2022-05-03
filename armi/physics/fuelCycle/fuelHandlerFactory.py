@@ -27,7 +27,9 @@ def fuelHandlerFactory(operator):
             # give the default FuelHandler. This does not have an implemented outage, but
             # still offers moving capabilities. Useful when you just need to make explicit
             # moves but do not have a fully-defined fuel management input.
+
             return FuelHandler(operator)
+
 
     # User did request a custom fuel handler. We must go find and import it
     # from the input directory.
