@@ -4,6 +4,7 @@ from armi import runLog
 
 from armi.physics.fuelCycle import fuelHandlers
 
+
 class FuelHandlerInterface(interfaces.Interface):
     """
     Moves and/or processes fuel in a Standard Operator.
@@ -148,4 +149,3 @@ class FuelHandlerInterface(interfaces.Interface):
         """Delegate mpi command to the fuel handler object."""
         fh = fuelHandlerFactory(self.o)
         return fh.workerOperate(cmd)
-

@@ -44,6 +44,7 @@ from armi.utils import plotting
 from armi.physics.fuelCycle.fuelHandlerInterface import FuelHandlerInterface
 from armi.physics.fuelCycle.fuelHandlerFactory import fuelHandlerFactory
 
+
 class FuelHandler:
     """
     A fuel handling machine can move fuel around the core and reactor.

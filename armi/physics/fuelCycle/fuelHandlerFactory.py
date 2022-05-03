@@ -3,7 +3,6 @@ from armi.utils import directoryChangers, pathTools
 from armi.physics.fuelCycle import fuelHandlers
 
 
-
 def fuelHandlerFactory(operator):
     """
     Return an instantiated FuelHandler object based on user settings.
@@ -69,4 +68,3 @@ def fuelHandlerFactory(operator):
                 )
             )
     return fuelHandler
-
