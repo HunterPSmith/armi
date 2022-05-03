@@ -78,14 +78,11 @@ class Block(composites.Composite):
 
     pDefs = blockParameters.getBlockParameterDefinitions()
 
-    def __init__(self, name, height=1.0, location=None):
+    def __init__(self, name: str, height: float = 1.0):
         """
         Builds a new ARMI block
 
-        caseSettings : Settings object, optional
-            The settings object to use to build the block
-
-        name : str, optional
+        name : str
             The name of this block
 
         height : float, optional
@@ -93,12 +90,9 @@ class Block(composites.Composite):
             `getVolume` assumes unit height.
         """
         composites.Composite.__init__(self, name)
-        self.makeUnique()
         self.p.height = height
+        self.p.heightBOL = height
 
-        if location:
-            k = location.axial
-            self.spatialLocator = grids.IndexLocation(0, 0, k, None)
         self.p.orientation = numpy.array((0.0, 0.0, 0.0))
 
         self.points = []
@@ -218,21 +212,6 @@ class Block(composites.Composite):
         """
         self.p.assemNum = assemNum
         return "B{0:04d}-{1:03d}".format(assemNum, axialIndex)
-
-    def makeUnique(self):
-        """
-        Assign a unique id (integer value) for each block.
-
-        This should be called whenever creating a block that is intended to be treated
-        as a unique object. For example, if you were to broadcast or pickle a block it
-        should have the same ID across all nodes. Likewise, if you deepcopy a block for
-        a temporary purpose to it should have the same ID.  However, ARMI's assembly
-        construction also uses deepcopy, and in order to keep that functionality, this
-        method needs to be called after creating a fresh assembly (from deepcopy).
-        """
-
-        self.p.id = self.__class__.uniqID
-        self.__class__.uniqID += 1
 
     def getSmearDensity(self, cold=True):
         """
@@ -1578,8 +1557,8 @@ class HexBlock(Block):
 
     PITCH_COMPONENT_TYPE: ClassVar[_PitchDefiningComponent] = (components.Hexagon,)
 
-    def __init__(self, name, height=1.0, location=None):
-        Block.__init__(self, name, height, location)
+    def __init__(self, name, height=1.0):
+        Block.__init__(self, name, height)
 
     def coords(self, rotationDegreesCCW=0.0):
         x, y, _z = self.spatialLocator.getGlobalCoordinates()

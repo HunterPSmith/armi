@@ -37,6 +37,7 @@ from armi.reactor.components import Hexagon, Rectangle
 from armi.reactor.converters import geometryConverters
 from armi.tests import ARMI_RUN_PATH, mockRunLogs, TEST_ROOT
 from armi.utils import directoryChangers
+from armi.reactor.converters.axialExpansionChanger import AxialExpansionChanger
 
 TEST_REACTOR = None  # pickled string of test reactor (for fast caching)
 
@@ -136,12 +137,15 @@ def loadTestReactor(
     Parameters
     ----------
     inputFilePath : str
-        Path to the directory of the armiRun.yaml input file.
+        Path to the directory of the input file.
 
     customSettings : dict with str keys and values of any type
         For each key in customSettings, the cs which is loaded from the
         armiRun.yaml will be overwritten to the value given in customSettings
         for that key.
+
+    inputFileName : str, default="armiRun.yaml"
+        Name of the input file to run.
 
     Returns
     -------
@@ -219,7 +223,7 @@ class HexReactorTests(ReactorTests):
     def setUp(self):
         self.o, self.r = loadTestReactor(self.directoryChanger.destination)
 
-    def testGetTotalParam(self):
+    def test_getTotalParam(self):
         # verify that the block params are being read.
         val = self.r.core.getTotalBlockParam("power")
         val2 = self.r.core.getTotalBlockParam("power", addSymmetricPositions=True)
@@ -743,12 +747,23 @@ class HexReactorTests(ReactorTests):
         # creation with modified enrichment on an expanded BOL assem.
         fuelComp = fuelBlock.getComponent(Flags.FUEL)
         bol = self.r.blueprints.assemblies[aOld.getType()]
-        bol.axiallyExpand(0.05, fuelComp.getNuclides())
+        changer = AxialExpansionChanger(converterSettings={})
+        changer.prescribedAxialExpansion(bol, [fuelComp], [0.05])
         aNew3 = self.r.core.createAssemblyOfType(aOld.getType(), 0.195)
         self.assertAlmostEqual(
             aNew3.getFirstBlock(Flags.FUEL).getUraniumMassEnrich(), 0.195
         )
         self.assertAlmostEqual(aNew3.getMass(), bol.getMass())
+
+    def test_getAvgTemp(self):
+        t0 = self.r.core.getAvgTemp([Flags.CLAD, Flags.WIRE, Flags.DUCT])
+        self.assertAlmostEqual(t0, 459.267, delta=0.01)
+
+        t1 = self.r.core.getAvgTemp([Flags.CLAD, Flags.FUEL])
+        self.assertAlmostEqual(t1, 545.043, delta=0.01)
+
+        t2 = self.r.core.getAvgTemp([Flags.CLAD, Flags.WIRE, Flags.DUCT, Flags.FUEL])
+        self.assertAlmostEqual(t2, 521.95269, delta=0.01)
 
 
 class CartesianReactorTests(ReactorTests):

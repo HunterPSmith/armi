@@ -450,7 +450,8 @@ class GlobalFluxExecuter(executers.DefaultExecuter):
 
         meshConverter = self.geomConverters.get("axial")
         if meshConverter:
-            meshConverter.applyStateToOriginal()
+            if self.options.applyResultsToReactor:
+                meshConverter.applyStateToOriginal()
             self.r = meshConverter._sourceReactor  # pylint: disable=protected-access;
 
         nAssemsBeforeConversion = [
@@ -632,7 +633,17 @@ class DoseResultsMapper(GlobalFluxResultMapper):
     """
     Updates fluence and dpa when time shifts.
 
-    Often called after a depletion step.
+    Often called after a depletion step. It is invoked using :py:meth:`apply() <.DoseResultsMapper.apply>`.
+
+    Parameters
+    ----------
+    depletionSeconds: float, required
+        Length of depletion step in units of seconds
+
+    options: GlobalFluxOptions, required
+        Object describing options used by the global flux solver. A few attributes from
+        this object are used to run the methods in DoseResultsMapper. An example
+        attribute is aclpDoseLimit.
 
     Notes
     -----
@@ -647,14 +658,31 @@ class DoseResultsMapper(GlobalFluxResultMapper):
         self.r = None
         self.depletionSeconds = depletionSeconds
 
-    def apply(self, reactor):
+    def apply(self, reactor, blockList=None):
+        """
+        Invokes :py:meth:`updateFluenceAndDpa() <.DoseResultsMapper.updateFluenceAndDpa>`
+        for a provided Reactor object.
+
+        Parameters
+        ----------
+        reactor: Reactor, required
+            ARMI Reactor object
+
+        blockList: list, optional
+            List of ARMI blocks to be processed by the class. If no blocks are provided, then
+            blocks returned by :py:meth:`getBlocks() <.reactors.Core.getBlocks>` are used.
+
+        Returns
+        -------
+        None
+        """
         runLog.extra("Updating fluence and dpa on reactor based on depletion step.")
         self.r = reactor
-        self.updateFluenceAndDpa(self.depletionSeconds)
+        self.updateFluenceAndDpa(self.depletionSeconds, blockList=blockList)
 
     def updateFluenceAndDpa(self, stepTimeInSeconds, blockList=None):
         r"""
-        updates the fast fluence and the DPA of the blocklist
+        Updates the fast fluence and the DPA of the blocklist
 
         The dpa rate from the previous timestep is used to compute the dpa here.
 
@@ -663,7 +691,8 @@ class DoseResultsMapper(GlobalFluxResultMapper):
             * detailedDpaPeak: The peak dpa of a block, considering axial and radial peaking
                 The peaking is based either on a user-provided peaking factor (computed in a
                 pin reconstructed rotation study) or the nodal flux peaking factors
-            * dpaPeakFromFluence: fast fluence * fluence conversion factor (old and inaccurate). Used to be dpaPeak
+            * dpaPeakFromFluence: fast fluence * fluence conversion factor (old and inaccurate).
+                Used to be dpaPeak
 
         Parameters
         ----------
