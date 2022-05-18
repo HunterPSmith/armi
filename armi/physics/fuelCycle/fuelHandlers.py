@@ -29,15 +29,16 @@ import math
 import os
 import re
 import warnings
-
 import numpy
 
-from armi import runLog
+
 from armi.utils.customExceptions import InputError
 from armi.reactor.flags import Flags
 from armi.utils.mathematics import findClosest, resampleStepwise
 from armi.physics.fuelCycle.fuelHandlerFactory import fuelHandlerFactory
 from armi.physics.fuelCycle.fuelHandlerInterface import FuelHandlerInterface
+from armi import runLog
+
 
 
 class FuelHandler:
@@ -88,6 +89,11 @@ class FuelHandler:
     def r(self):
         """Link to the Reactor object."""
         return self.o.r
+
+    def preoutage(self):
+        self.prepCore()
+        self.prepShuffleMap()
+        self.r.core.locateAllAssemblies()
 
     def outage(self, factor=1.0):
         r"""
@@ -1154,15 +1160,39 @@ class FuelHandler:
             if a not in self.moved:
                 self.moved.append(a)
         oldA1Location = a1.spatialLocator
-        self._transferStationaryBlocks(a1, a2)
-        a1.moveTo(a2.spatialLocator)
+        oldA2Location = a2.spatialLocator
+        a1StationaryBlocks, a2StationaryBlocks = self._transferStationaryBlocks(a1, a2)
+        a1.moveTo(oldA2Location)
         a2.moveTo(oldA1Location)
+
+        self._validateAssemblySwap(
+            a1StationaryBlocks, oldA1Location, a2StationaryBlocks, oldA2Location
+        )
 
         self._swapFluxParam(a1, a2)
 
+    def _validateAssemblySwap(
+        self, a1StationaryBlocks, oldA1Location, a2StationaryBlocks, oldA2Location
+    ):
+        """
+        Detect whether any blocks containing stationary components were moved
+        after a swap.
+        """
+        for assemblyBlocks, oldLocation in [
+            [a1StationaryBlocks, oldA1Location],
+            [a2StationaryBlocks, oldA2Location],
+        ]:
+            for block in assemblyBlocks:
+                if block.parent.spatialLocator != oldLocation:
+                    raise ValueError(
+                        """Stationary block {} has been moved. Expected to be in location {}. Was moved to {}.""".format(
+                            block, oldLocation, block.parent.spatialLocator
+                        )
+                    )
+
     def _transferStationaryBlocks(self, assembly1, assembly2):
         """
-        Exchange the stationary blocks (e.g. grid plate) between the moving assemblies
+        Exchange the stationary blocks (e.g. grid plate) between the moving assemblies.
 
         These blocks in effect are not moved at all.
         """
@@ -1203,6 +1233,10 @@ class FuelHandler:
             # insert stationary blocks
             assembly1.insert(blocksAssembly1[1], blocksAssembly2[0])
             assembly2.insert(blocksAssembly2[1], blocksAssembly1[0])
+
+        return [item[0] for item in a1StationaryBlocks], [
+            item[0] for item in a2StationaryBlocks
+        ]
 
     def dischargeSwap(self, incoming, outgoing):
         r"""
