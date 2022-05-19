@@ -150,6 +150,8 @@ class FuelHandler:
                         self.cycle,
                         a.lastLocationLabel,
                         a.getLocation(),
+                        a.lastRotationLabel,
+                        a.getRotationNum(),
                         [b.getUraniumMassEnrich() for b in a],
                         a.getType(),
                         a.getName(),

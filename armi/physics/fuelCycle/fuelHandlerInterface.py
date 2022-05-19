@@ -148,10 +148,13 @@ class FuelHandlerInterface(interfaces.Interface):
                 for (
                     fromLoc,
                     toLoc,
+                    _,
+                    _,
                     chargeEnrich,
                     assemblyType,
                     movingAssemName,
                 ) in movesThisCycle:
+
                     enrichLine = " ".join(
                         ["{0:.8f}".format(enrich) for enrich in chargeEnrich]
                     )
@@ -173,10 +176,32 @@ class FuelHandlerInterface(interfaces.Interface):
                             "{0} moved to {1} with assembly type {2} with enrich list: {3}\n"
                             "".format(fromLoc, toLoc, assemblyType, enrichLine)
                         )
+                for (
+                    _,
+                    toLoc,
+                    fromRot,
+                    toRot,
+                    _,
+                    _,
+                    movingAssemName,
+                ) in movesThisCycle:
+                    if not fromRot == toRot:
+                        # If assembly is entering the core, provide extra information
+                        out.write(
+                            "{0} at {1} was rotated from {2} to {3}\n"
+                            "".format(
+                                movingAssemName,
+                                toLoc,
+                                fromRot,
+                                toRot,
+                            )
+                        )
             out.write("\n")
         out.close()
 
     def workerOperate(self, cmd):
+
         """Delegate mpi command to the fuel handler object."""
+
         fh = fuelHandlerFactory.fuelHandlerFactory(self.o)
         return fh.workerOperate(cmd)
