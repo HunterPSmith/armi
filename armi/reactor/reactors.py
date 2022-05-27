@@ -1616,9 +1616,11 @@ class Core(composites.Composite):
             raise ValueError("Too many neighbors found!")
         return None
 
-    def setMoveList(self, cycle, oldLoc, newLoc, enrichList, assemblyType, assemName):
+    def setMoveList(
+        self, cycle, oldLoc, newLoc, oldRot, newRot, enrichList, assemblyType, assemName
+    ):
         """Tracks the movements in terms of locations and enrichments."""
-        data = (oldLoc, newLoc, enrichList, assemblyType, assemName)
+        data = (oldLoc, newLoc, oldRot, newRot, enrichList, assemblyType, assemName)
         # NOTE: moveList is actually a moveDict (misnomer)
         if self.moveList.get(cycle) is None:
             self.moveList[cycle] = []

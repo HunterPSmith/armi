@@ -969,6 +969,56 @@ class TestFuelHandler(ArmiTestHelper):
         with self.assertRaises(ValueError):
             fh.dischargeSwap(a2, a1)
 
+    def test_validateAssemblySwap(self):
+        """
+        Test the _validateAssemblySwap method.
+        """
+
+        # grab the assemblies
+        assems = self.r.core.getAssemblies(Flags.FUEL)
+
+        # grab two arbitrary assemblies
+        a1 = assems[1]
+        a2 = assems[2]
+
+        # swap assemblies
+        fh = fuelHandlers.FuelHandler(self)
+        oldA1Location = a1.spatialLocator
+        oldA2Location = a2.spatialLocator
+        a1StationaryBlocks, a2StationaryBlocks = fh._transferStationaryBlocks(a1, a2)
+        a1.moveTo(oldA2Location)
+        self.assertTrue(a1.spatialLocator == oldA2Location)
+        a2.moveTo(oldA1Location)
+        self.assertTrue(a2.spatialLocator == oldA1Location)
+
+        # swap the stationary blocks back
+        fh._transferStationaryBlocks(a1, a2)
+
+        with self.assertRaises(ValueError):
+            fh._validateAssemblySwap(
+                a1StationaryBlocks, oldA1Location, a2StationaryBlocks, oldA2Location
+            )
+
+    def test_validateLocations(self):
+        """
+        Test the validateLocations method.
+        """
+        # grab the assemblies
+        assems = self.r.core.getAssemblies(Flags.FUEL)
+
+        # grab two arbitrary assemblies
+        a1 = assems[1]
+        a2 = assems[2]
+
+        # move assembly 1 to assembly 2 location
+        a1.moveTo(a2.spatialLocator)
+        self.assertTrue(a1.spatialLocator == a2.spatialLocator)
+
+        #
+        fh = self.r.o.getInterface("fuelHandler")
+        with self.assertRaises(ValueError):
+            fh.validateLocations()
+
 
 class TestFuelPlugin(unittest.TestCase):
     """Tests that make sure the plugin is being discovered well."""
