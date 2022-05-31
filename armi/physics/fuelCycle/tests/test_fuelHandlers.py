@@ -541,33 +541,75 @@ class TestFuelHandler(ArmiTestHelper):
         fh = fuelHandlers.FuelHandler(self.o)
 
         # simple divergent
-        schedule, widths = fh.buildRingSchedule(1, 9)
-        self.assertEqual(schedule, [9, 8, 7, 6, 5, 4, 3, 2, 1])
+        schedule = fh.translationFunctions.buildRingSchedule(self, 1, 9, diverging=True)
+        self.assertEqual(schedule, [[9], [8], [7], [6], [5], [4], [3], [2], [1]])
 
         # simple with 1 jump
-        schedule, widths = fh.buildRingSchedule(9, 1, jumpRingFrom=6)
-        self.assertEqual(schedule, [5, 4, 3, 2, 1, 6, 7, 8, 9])
-        self.assertEqual(widths, [0, 0, 0, 0, 0, 0, 0, 0, 0])
-
-        # 1 jump plus auto-correction to core size
-        schedule, widths = fh.buildRingSchedule(1, 17, jumpRingFrom=5)
-        self.assertEqual(schedule, [6, 7, 8, 9, 5, 4, 3, 2, 1])
-        self.assertEqual(widths, [0, 0, 0, 0, 0, 0, 0, 0, 0])
+        schedule = fh.translationFunctions.buildRingSchedule(self, 1, 9, jumpRingFrom=6)
+        self.assertEqual(schedule, [[5], [4], [3], [2], [1], [6], [7], [8], [9]])
 
         # crash on invalid jumpring
-        with self.assertRaises(ValueError):
-            schedule, widths = fh.buildRingSchedule(1, 17, jumpRingFrom=0)
+        with self.assertRaises(RuntimeError):
+            schedule = fh.translationFunctions.buildRingSchedule(self, 1, 17, jumpRingFrom=0)
 
         # test 4: Mid way jumping
-        schedule, widths = fh.buildRingSchedule(1, 9, jumpRingTo=6, jumpRingFrom=3)
-        self.assertEqual(schedule, [9, 8, 7, 4, 5, 6, 3, 2, 1])
+        schedule = fh.translationFunctions.buildRingSchedule(self, 1, 9, jumpRingTo=6, jumpRingFrom=3, diverging=True)
+        self.assertEqual(schedule, [[9], [8], [7], [4], [5], [6], [3], [2], [1]])
 
     def test_buildConvergentRingSchedule(self):
         fh = fuelHandlers.FuelHandler(self.o)
-        schedule, widths = fh.buildConvergentRingSchedule(17, 1)
-        self.assertEqual(schedule, [1, 17])
-        self.assertEqual(widths, [16, 1])
-
+        schedule = fh.translationFunctions.buildConvergentRingSchedule(self, 1, 9)
+        self.assertEqual(schedule, [[1],[2],[3],[4],[5],[6],[7],[8],[9]])
+    
+    def test_getRingAssemblies(self):
+        fh = fuelHandlers.FuelHandler(self.o)
+        schedule = [[2], [1]]             
+        assemblies = fh.translationFunctions.getRingAssemblies(fh, schedule)
+        self.assertEqual([[assy.getLocation() for assy in assyList] for assyList in assemblies], [["002-001", "002-002",], ["001-001"]])
+    
+    def test_getBatchZoneAssembliesFromLocation(self):
+        fh = fuelHandlers.FuelHandler(self.o)
+        assemblies = fh.translationFunctions.getBatchZoneAssembliesFromLocation(fh, [["002-001", "002-002",], ["001-001"]])
+        self.assertEqual([[assy.getLocation() for assy in assyList] for assyList in assemblies], [["002-001", "002-002",], ["001-001"]])
+        
+    def test_getCascadesFromLocations(self):
+        fh = fuelHandlers.FuelHandler(self.o)
+        locations = [["002-001", "002-002",], ["001-001"]]
+        assemblies = fh.translationFunctions.getCascadesFromLocations(fh, locations)
+        self.assertEqual([[assy.getLocation() for assy in assyList] for assyList in assemblies], locations)
+    
+    def test_buildBatchCascades(self):
+        fh = fuelHandlers.FuelHandler(self.o)
+        schedule = fh.translationFunctions.buildRingSchedule(self, 1, 2, diverging = False)
+        assemblies = fh.translationFunctions.getRingAssemblies(fh, schedule)
+        batchCascade = fh.translationFunctions.buildBatchCascades(assemblies)
+        self.assertEqual(batchCascade, fh.translationFunctions.getCascadesFromLocations(fh,[["002-002"], ["001-001", "002-001"]]))
+    
+    def test_changeBlockLevelEnrichment(self):
+        fh = fuelHandlers.FuelHandler(self.o)
+        assy = self.r.core.getAssemblies(Flags.FEED)[0]
+        
+        # Test single enrichment 
+        newEnrich =  0.16 
+        fh.translationFunctions.changeBlockLevelEnrichment(assy, newEnrich)
+        for block in assy.getBlocks(Flags.FUEL):
+            self.assertAlmostEqual(block.getFissileMassEnrich(), 0.16, delta = 1E-6)
+        
+        # Test enrichment list
+        newEnrich = [0.12, 0.14, 0.16]
+        fh.translationFunctions.changeBlockLevelEnrichment(assy, newEnrich)
+        for index, block in enumerate(assy.getBlocks(Flags.FUEL)):
+            self.assertAlmostEqual(block.getFissileMassEnrich(), newEnrich[index], delta = 1E-6)
+            
+        # Test invalid enrichment list length and invalid enrichment value
+        newEnrich = [0.12, 0.14, 0.16, 0.15]
+        with self.assertRaises(RuntimeError):
+            fh.translationFunctions.changeBlockLevelEnrichment(assy, newEnrich)
+        newEnrich = 'a'
+        with self.assertRaises(RuntimeError):
+            fh.translationFunctions.changeBlockLevelEnrichment(assy, newEnrich)
+            
+            
     def test_buildEqRingSchedule(self):
         fh = fuelHandlers.FuelHandler(self.o)
         locSchedule = fh.buildEqRingSchedule([2, 1])
