@@ -471,8 +471,8 @@ class TestFuelHandler(ArmiTestHelper):
         addSomeDetailAssemblies(hist, assems)
         b = self.o.r.core.getFirstBlock(Flags.FUEL)
         rotNum = b.getRotationNum()
-        fh.simpleAssemblyRotation()
-        fh.simpleAssemblyRotation()
+        fh.rotationFunctions.simpleAssemblyRotation(fh)
+        fh.rotationFunctions.simpleAssemblyRotation(fh)
         self.assertEqual(b.getRotationNum(), rotNum + 2)
 
     def test_linPowByPin(self):
@@ -517,7 +517,7 @@ class TestFuelHandler(ArmiTestHelper):
         b.p.linPowByPinGamma = np.array([1, 2, 3])
         self.assertEqual(type(b.p.linPowByPinGamma), np.ndarray)
 
-    def test_buReducingAssemblyRotation(self):
+    def test_functionalAssemblyRotation(self):
         fh = fuelHandlers.FuelHandler(self.o)
         hist = self.o.getInterface("history")
         newSettings = {"assemblyRotationStationary": True}
@@ -534,7 +534,7 @@ class TestFuelHandler(ArmiTestHelper):
 
         addSomeDetailAssemblies(hist, [assem])
         rotNum = b.getRotationNum()
-        fh.buReducingAssemblyRotation()
+        fh.rotationFunctions.functionalAssemblyRotation(fh)
         self.assertNotEqual(b.getRotationNum(), rotNum)
 
     def test_buildRingSchedule(self):

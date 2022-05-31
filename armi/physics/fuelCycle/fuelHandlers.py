@@ -55,6 +55,7 @@ class FuelHandler:
 
     # Import functions
     from armi.physics.fuelCycle import translationFunctions
+    from armi.physics.fuelCycle import rotationFunctions
 
     def __init__(self, operator):
         # we need access to the operator to find the core, get settings, grab
@@ -204,192 +205,6 @@ class FuelHandler:
         defaultFactorList = {"eqShuffles": 1}
         factorSearchFlags = []
         return defaultFactorList, factorSearchFlags
-
-    def simpleAssemblyRotation(self):
-        """
-        Rotate all pin-detail assemblies that were just shuffled by 60 degrees
-
-        Notes
-        -----
-        Also, optionally rotate stationary (non-shuffled) assemblies if the setting is set.
-        Obviously, only pin-detail assemblies can be rotated, because homogenized assemblies are isotropic.
-
-        Examples
-        --------
-        >>> fh.simpleAssemblyRotation()
-
-        See Also
-        --------
-        buReducingAssemblyRotation : an alternative rotation algorithm
-        outage : calls this method based on a user setting
-        """
-        runLog.info("Rotating assemblies by 60 degrees")
-        numRotated = 0
-        hist = self.o.getInterface("history")
-        for a in hist.getDetailAssemblies():
-            if a in self.moved or self.cs["assemblyRotationStationary"]:
-                a.rotatePins(1)
-                numRotated += 1
-                i, j = a.spatialLocator.getRingPos()  # hex indices (i,j) = (ring,pos)
-                runLog.extra(
-                    "Rotating Assembly ({0},{1}) to Orientation {2}".format(i, j, 1)
-                )
-        runLog.extra("Rotated {0} assemblies".format(numRotated))
-
-    def buReducingAssemblyRotation(self):
-        r"""
-        Rotates all detail assemblies to put the highest bu pin in the lowest power orientation
-
-        See Also
-        --------
-        simpleAssemblyRotation : an alternative rotation algorithm
-        outage : calls this method based on a user setting
-
-        """
-
-        runLog.info("Algorithmically rotating assemblies to minimize burnup")
-        numRotated = 0
-        hist = self.o.getInterface("history")
-        for aPrev in self.moved:  # much more convenient to loop through aPrev first
-            aNow = self.r.core.getAssemblyWithStringLocation(aPrev.lastLocationLabel)
-            # no point in rotation if there's no pin detail
-            if aNow in hist.getDetailAssemblies():
-
-                rot = self.getOptimalAssemblyOrientation(aNow, aPrev)
-                aNow.rotatePins(rot)  # rot = integer between 0 and 5
-                numRotated += 1
-                # Print out rotation operation (mainly for testing)
-                # hex indices (i,j) = (ring,pos)
-                (i, j) = aNow.spatialLocator.getRingPos()
-                runLog.important(
-                    "Rotating Assembly ({0},{1}) to Orientation {2}".format(i, j, rot)
-                )
-
-        # rotate NON-MOVING assemblies (stationary)
-        if self.cs["assemblyRotationStationary"]:
-            for a in hist.getDetailAssemblies():
-                if a not in self.moved:
-                    rot = self.getOptimalAssemblyOrientation(a, a)
-                    a.rotatePins(rot)  # rot = integer between 0 and 6
-                    numRotated += 1
-                    (i, j) = a.spatialLocator.getRingPos()
-                    runLog.important(
-                        "Rotating Assembly ({0},{1}) to Orientation {2}".format(
-                            i, j, rot
-                        )
-                    )
-
-        runLog.info("Rotated {0} assemblies".format(numRotated))
-
-    @staticmethod
-    def getOptimalAssemblyOrientation(a, aPrev):
-        """
-        Get optimal assembly orientation/rotation to minimize peak burnup.
-
-        Notes
-        -----
-        Works by placing the highest-BU pin in the location (of 6 possible locations) with lowest
-        expected pin power. We evaluated "expected pin power" based on the power distribution in
-        aPrev, which is the previous assembly located here. If aPrev has no pin detail, then we must use its
-        corner fast fluxes to make an estimate.
-
-        Parameters
-        ----------
-        a : Assembly object
-            The assembly that is being rotated.
-
-        aPrev : Assembly object
-            The assembly that previously occupied this location (before the last shuffle).
-
-            If the assembly "a" was not shuffled, then "aPrev" = "a".
-
-            If "aPrev" has pin detail, then we will determine the orientation of "a" based on
-            the pin powers of "aPrev" when it was located here.
-
-            If "aPrev" does NOT have pin detail, then we will determine the orientation of "a" based on
-            the corner fast fluxes in "aPrev" when it was located here.
-
-        Returns
-        -------
-        rot : int
-            An integer from 0 to 5 representing the "orientation" of the assembly.
-            This orientation is relative to the current assembly orientation.
-            rot = 0 corresponds to no rotation.
-            rot represents the number of pi/3 counterclockwise rotations for the default orientation.
-
-        Examples
-        --------
-        >>> fh.getOptimalAssemblyOrientation(a,aPrev)
-        4
-
-        See Also
-        --------
-        rotateAssemblies : calls this to figure out how to rotate
-        """
-
-        # determine whether or not aPrev had pin details
-        fuelPrev = aPrev.getFirstBlock(Flags.FUEL)
-        if fuelPrev:
-            aPrevDetailFlag = fuelPrev.p.pinLocation[4] is not None
-        else:
-            aPrevDetailFlag = False
-
-        rot = 0  # default: no rotation
-        # First get pin index of maximum BU in this assembly.
-        _maxBuAssem, maxBuBlock = a.getMaxParam("percentBuMax", returnObj=True)
-        if maxBuBlock is None:
-            # no max block. They're all probably zero
-            return rot
-        # start at 0 instead of 1
-        maxBuPinIndexAssem = int(maxBuBlock.p.percentBuMaxPinLocation - 1)
-        bIndexMaxBu = a.index(maxBuBlock)
-
-        if maxBuPinIndexAssem == 0:
-            # Don't bother rotating if the highest-BU pin is the central pin. End this method.
-            return rot
-
-        else:
-
-            # transfer percentBuMax rotated pin index to non-rotated pin index
-            # maxBuPinIndexAssem = self.pinIndexLookup[maxBuPinIndexAssem]
-            # dummyList = numpy.where(self.pinIndexLookup == maxBuPinIndexAssem)
-            # maxBuPinIndexAssem = dummyList[0][0]
-
-            if aPrevDetailFlag:
-
-                # aPrev has pin detail. Excellent!
-                # Determine which of 6 possible rotated pin indices had the lowest power when aPrev was here.
-
-                prevAssemPowHereMIN = float("inf")
-
-                for possibleRotation in range(6):  # k = 1,2,3,4,5
-                    # get rotated pin index
-                    indexLookup = maxBuBlock.rotatePins(
-                        possibleRotation, justCompute=True
-                    )
-                    # rotated index of highest-BU pin
-                    index = int(indexLookup[maxBuPinIndexAssem])
-                    # get pin power at this index in the previously assembly located here
-                    # power previously at rotated index
-                    prevAssemPowHere = aPrev[bIndexMaxBu].p.linPowByPin[index - 1]
-
-                    if prevAssemPowHere is not None:
-                        runLog.debug(
-                            "Previous power in rotation {0} where pinLoc={1} is {2:.4E} W/cm"
-                            "".format(possibleRotation, index, prevAssemPowHere)
-                        )
-                        if prevAssemPowHere < prevAssemPowHereMIN:
-                            prevAssemPowHereMIN = prevAssemPowHere
-                            rot = possibleRotation
-
-            else:
-                raise ValueError(
-                    "Cannot perform detailed rotation analysis without pin-level "
-                    "flux information."
-                )
-
-            runLog.debug("Best relative rotation is {0}".format(rot))
-            return rot
 
     def prepCore(self):
         """Aux. function to run before XS generation (do moderation, etc. here)"""
@@ -929,6 +744,11 @@ class FuelHandler:
         )
 
         self._swapFluxParam(a1, a2)
+
+    def rotateAssembly(self, assembly, rotNum):
+        assembly.rotatePins(rotNum)
+        if assembly not in self.moved:
+            self.moved.append(assembly)
 
     def _validateAssemblySwap(
         self, a1StationaryBlocks, oldA1Location, a2StationaryBlocks, oldA2Location
