@@ -550,66 +550,114 @@ class TestFuelHandler(ArmiTestHelper):
 
         # crash on invalid jumpring
         with self.assertRaises(RuntimeError):
-            schedule = fh.translationFunctions.buildRingSchedule(self, 1, 17, jumpRingFrom=0)
+            schedule = fh.translationFunctions.buildRingSchedule(
+                self, 1, 17, jumpRingFrom=0
+            )
 
         # test 4: Mid way jumping
-        schedule = fh.translationFunctions.buildRingSchedule(self, 1, 9, jumpRingTo=6, jumpRingFrom=3, diverging=True)
+        schedule = fh.translationFunctions.buildRingSchedule(
+            self, 1, 9, jumpRingTo=6, jumpRingFrom=3, diverging=True
+        )
         self.assertEqual(schedule, [[9], [8], [7], [4], [5], [6], [3], [2], [1]])
 
     def test_buildConvergentRingSchedule(self):
         fh = fuelHandlers.FuelHandler(self.o)
         schedule = fh.translationFunctions.buildConvergentRingSchedule(self, 1, 9)
-        self.assertEqual(schedule, [[1],[2],[3],[4],[5],[6],[7],[8],[9]])
-    
+        self.assertEqual(schedule, [[1], [2], [3], [4], [5], [6], [7], [8], [9]])
+
     def test_getRingAssemblies(self):
         fh = fuelHandlers.FuelHandler(self.o)
-        schedule = [[2], [1]]             
+        schedule = [[2], [1]]
         assemblies = fh.translationFunctions.getRingAssemblies(fh, schedule)
-        self.assertEqual([[assy.getLocation() for assy in assyList] for assyList in assemblies], [["002-001", "002-002",], ["001-001"]])
-    
+        self.assertEqual(
+            [[assy.getLocation() for assy in assyList] for assyList in assemblies],
+            [
+                [
+                    "002-001",
+                    "002-002",
+                ],
+                ["001-001"],
+            ],
+        )
+
     def test_getBatchZoneAssembliesFromLocation(self):
         fh = fuelHandlers.FuelHandler(self.o)
-        assemblies = fh.translationFunctions.getBatchZoneAssembliesFromLocation(fh, [["002-001", "002-002",], ["001-001"]])
-        self.assertEqual([[assy.getLocation() for assy in assyList] for assyList in assemblies], [["002-001", "002-002",], ["001-001"]])
-        
+        assemblies = fh.translationFunctions.getBatchZoneAssembliesFromLocation(
+            fh,
+            [
+                [
+                    "002-001",
+                    "002-002",
+                ],
+                ["001-001"],
+            ],
+        )
+        self.assertEqual(
+            [[assy.getLocation() for assy in assyList] for assyList in assemblies],
+            [
+                [
+                    "002-001",
+                    "002-002",
+                ],
+                ["001-001"],
+            ],
+        )
+
     def test_getCascadesFromLocations(self):
         fh = fuelHandlers.FuelHandler(self.o)
-        locations = [["002-001", "002-002",], ["001-001"]]
+        locations = [
+            [
+                "002-001",
+                "002-002",
+            ],
+            ["001-001"],
+        ]
         assemblies = fh.translationFunctions.getCascadesFromLocations(fh, locations)
-        self.assertEqual([[assy.getLocation() for assy in assyList] for assyList in assemblies], locations)
-    
+        self.assertEqual(
+            [[assy.getLocation() for assy in assyList] for assyList in assemblies],
+            locations,
+        )
+
     def test_buildBatchCascades(self):
         fh = fuelHandlers.FuelHandler(self.o)
-        schedule = fh.translationFunctions.buildRingSchedule(self, 1, 2, diverging = False)
+        schedule = fh.translationFunctions.buildRingSchedule(
+            self, 1, 2, diverging=False
+        )
         assemblies = fh.translationFunctions.getRingAssemblies(fh, schedule)
         batchCascade = fh.translationFunctions.buildBatchCascades(assemblies)
-        self.assertEqual(batchCascade, fh.translationFunctions.getCascadesFromLocations(fh,[["002-002"], ["001-001", "002-001"]]))
-    
+        self.assertEqual(
+            batchCascade,
+            fh.translationFunctions.getCascadesFromLocations(
+                fh, [["002-002"], ["001-001", "002-001"]]
+            ),
+        )
+
     def test_changeBlockLevelEnrichment(self):
         fh = fuelHandlers.FuelHandler(self.o)
         assy = self.r.core.getAssemblies(Flags.FEED)[0]
-        
-        # Test single enrichment 
-        newEnrich =  0.16 
+
+        # Test single enrichment
+        newEnrich = 0.16
         fh.translationFunctions.changeBlockLevelEnrichment(assy, newEnrich)
         for block in assy.getBlocks(Flags.FUEL):
-            self.assertAlmostEqual(block.getFissileMassEnrich(), 0.16, delta = 1E-6)
-        
+            self.assertAlmostEqual(block.getFissileMassEnrich(), 0.16, delta=1e-6)
+
         # Test enrichment list
         newEnrich = [0.12, 0.14, 0.16]
         fh.translationFunctions.changeBlockLevelEnrichment(assy, newEnrich)
         for index, block in enumerate(assy.getBlocks(Flags.FUEL)):
-            self.assertAlmostEqual(block.getFissileMassEnrich(), newEnrich[index], delta = 1E-6)
-            
+            self.assertAlmostEqual(
+                block.getFissileMassEnrich(), newEnrich[index], delta=1e-6
+            )
+
         # Test invalid enrichment list length and invalid enrichment value
         newEnrich = [0.12, 0.14, 0.16, 0.15]
         with self.assertRaises(RuntimeError):
             fh.translationFunctions.changeBlockLevelEnrichment(assy, newEnrich)
-        newEnrich = 'a'
+        newEnrich = "a"
         with self.assertRaises(RuntimeError):
             fh.translationFunctions.changeBlockLevelEnrichment(assy, newEnrich)
-            
-            
+
     def test_buildEqRingSchedule(self):
         fh = fuelHandlers.FuelHandler(self.o)
         locSchedule = fh.buildEqRingSchedule([2, 1])

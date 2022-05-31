@@ -19,7 +19,7 @@ def buildRingSchedule(
     of groups of rings. This function will default to hexagonal ring structure if insufficient inputs are provided.
     The function is general enough to create inputs for convergent and divergent ring shuffling with jump rings.
     Ring numbering is consistant with DIF3D numbering scheme with ring 1 as the center assembly of the core.
-    An outline of the functions behaviour is described below. 
+    An outline of the functions behaviour is described below.
 
     Notes
     -----
@@ -99,32 +99,25 @@ def buildRingSchedule(
     elif not jumpRingTo:
         jumpRingTo = internalRing
 
-    if (
-        diverging
-        and jumpRingFrom is not None
-        and jumpRingFrom > jumpRingTo
-    ):
+    if diverging and jumpRingFrom is not None and jumpRingFrom > jumpRingTo:
         raise RuntimeError("Cannot have inward jumps in divergent cases.")
-    elif (
-        not diverging
-        and jumpRingFrom is not None
-        and jumpRingFrom < jumpRingTo
-    ):
+    elif not diverging and jumpRingFrom is not None and jumpRingFrom < jumpRingTo:
         raise RuntimeError("Cannot have outward jumps in convergent cases.")
 
     # step 1: build the base rings
-    numSteps = int((abs(internalRing - externalRing) + 1)
-                   * (1.0 - coarseFactor))
+    numSteps = int((abs(internalRing - externalRing) + 1) * (1.0 - coarseFactor))
     # don't let it be smaller than 2 because linspace(1,5,1)= [1], linspace(1,5,2)= [1,5]
     if numSteps < 2:
         numSteps = 2
     # Build preliminary ring list
     if diverging:
-        baseRings = [int(ring) for ring in numpy.linspace(
-            externalRing, internalRing, numSteps)]
+        baseRings = [
+            int(ring) for ring in numpy.linspace(externalRing, internalRing, numSteps)
+        ]
     else:
-        baseRings = [int(ring) for ring in numpy.linspace(
-            internalRing, externalRing, numSteps)]
+        baseRings = [
+            int(ring) for ring in numpy.linspace(internalRing, externalRing, numSteps)
+        ]
     # eliminate duplicates.
     newBaseRings = []
     for br in baseRings:
@@ -135,20 +128,22 @@ def buildRingSchedule(
     # step 2: locate which rings should be reversed to give the jump-ring effect.
     if jumpRingFrom is not None:
         _closestRingFrom, jumpRingFromIndex = utils.findClosest(
-            baseRings, jumpRingFrom, indx=True)
+            baseRings, jumpRingFrom, indx=True
+        )
         _closestRingTo, jumpRingToIndex = utils.findClosest(
-            baseRings, jumpRingTo, indx=True)
+            baseRings, jumpRingTo, indx=True
+        )
     else:
         jumpRingToIndex = 0
 
     # Update rings
     if diverging:
         for i, ring in enumerate(baseRings[:-1]):
-            baseRings[i] = [j+1 for j in range(baseRings[i+1], ring)]
+            baseRings[i] = [j + 1 for j in range(baseRings[i + 1], ring)]
         baseRings[-1] = [baseRings[-1]]
     else:
         for i, ring in enumerate(baseRings[:-1]):
-            baseRings[i] = [j for j in range(ring, baseRings[i+1])]
+            baseRings[i] = [j for j in range(ring, baseRings[i + 1])]
         baseRings[-1] = [baseRings[-1]]
 
     # step 3: build the final ring list, potentially with a reversed section
@@ -157,8 +152,7 @@ def buildRingSchedule(
     if jumpRingFrom is not None:
         newBaseRings.extend(baseRings[:jumpRingToIndex])
         # add in reversed section that is jumped
-        newBaseRings.extend(
-            reversed(baseRings[jumpRingToIndex:jumpRingFromIndex]))
+        newBaseRings.extend(reversed(baseRings[jumpRingToIndex:jumpRingFromIndex]))
         # add the rest.
         newBaseRings.extend(baseRings[jumpRingFromIndex:])
     else:
@@ -169,13 +163,10 @@ def buildRingSchedule(
 
 
 def buildConvergentRingSchedule(
-    fuelHandler,
-    dischargeRing=1,
-    chargeRing=None,
-    coarseFactor=0.0
+    fuelHandler, dischargeRing=1, chargeRing=None, coarseFactor=0.0
 ):
     r"""
-    Build a convergent ring schedule based on user inputs. This function returns a list, in order from discharge 
+    Build a convergent ring schedule based on user inputs. This function returns a list, in order from discharge
     to charge, of groups of rings. This function will default to hexagonal ring structure. Ring numbering is
     consistent with DIF3D numbering scheme with ring 1 as the center assembly of the core. An outline of the
     function's behavior is described below.
@@ -224,22 +215,17 @@ def buildConvergentRingSchedule(
     ringSchedule = sorted(list(set(ringSchedule)))
     # step 3. compute widths
     for i, ring in enumerate(ringSchedule[:-1]):
-        ringSchedule[i] = [j for j in range(ring, ringSchedule[i+1])]
+        ringSchedule[i] = [j for j in range(ring, ringSchedule[i + 1])]
     ringSchedule[-1] = [ringSchedule[-1]]
     # step 4. assemble and return
     return ringSchedule
 
 
-def getRingAssemblies(
-    fuelHandler,
-    ringSchedule,
-    circular=False,
-    flags=Flags.FUEL
-):
+def getRingAssemblies(fuelHandler, ringSchedule, circular=False, flags=Flags.FUEL):
     r"""
     Gather all assemblies within the ring groups described in ringSchedule. This function takes a ringSchedule, like
     those output by buildRingSchedule and buildConvergentRingSchedule, and returns all assemblies within those rings
-    in a similar structure. An outline of the functions behaviour is described below. 
+    in a similar structure. An outline of the functions behaviour is described below.
 
     Example
     -------
@@ -294,10 +280,12 @@ def getRingAssemblies(
         for ring in rings:
             if circular:
                 assemblies += fuelHandler.r.core.getAssembliesInCircularRing(
-                    ring, typeSpec=flags)
+                    ring, typeSpec=flags
+                )
             else:
                 assemblies += fuelHandler.r.core.getAssembliesInRing(
-                    ring, typeSpec=flags)
+                    ring, typeSpec=flags
+                )
         # Sort assemblies within each ring group
         if fuelHandler.cs["circularRingOrder"] == "angle":
             assemblies.sort(key=lambda x: squaredDistanceFromOrigin(x))
@@ -374,20 +362,35 @@ def getBatchZoneAssembliesFromLocation(
                 if int(assemblyLocation[:3]) == 1:
                     if int(assemblyLocation[4:]) == 1:
                         zoneAssembly.append(
-                            fuelHandler.r.core.getAssemblyWithStringLocation(assemblyLocation))
+                            fuelHandler.r.core.getAssemblyWithStringLocation(
+                                assemblyLocation
+                            )
+                        )
                     else:
                         raise RuntimeError(
-                            "the provided assembly location, {}, is not valid".format(assemblyLocation))
+                            "the provided assembly location, {}, is not valid".format(
+                                assemblyLocation
+                            )
+                        )
                 elif int(assemblyLocation[:3]) <= fuelHandler.r.core.getNumRings():
-                    if (int(assemblyLocation[:3])-1)*6 >= int(assemblyLocation[4:]):
+                    if (int(assemblyLocation[:3]) - 1) * 6 >= int(assemblyLocation[4:]):
                         zoneAssembly.append(
-                            fuelHandler.r.core.getAssemblyWithStringLocation(assemblyLocation))
+                            fuelHandler.r.core.getAssemblyWithStringLocation(
+                                assemblyLocation
+                            )
+                        )
                     else:
                         raise RuntimeError(
-                            "the provided assembly location, {}, is not valid".format(assemblyLocation))
+                            "the provided assembly location, {}, is not valid".format(
+                                assemblyLocation
+                            )
+                        )
                 else:
                     raise RuntimeError(
-                        "the provided assembly location, {}, is not valid".format(assemblyLocation))
+                        "the provided assembly location, {}, is not valid".format(
+                            assemblyLocation
+                        )
+                    )
             # is assemblyLocation outside the core
             else:
                 try:
@@ -398,33 +401,38 @@ def getBatchZoneAssembliesFromLocation(
                         if setting.lower() == "new":
                             if value in fuelHandler.r.blueprints.assemblies.keys():
                                 assembly = fuelHandler.r.core.createAssemblyOfType(
-                                    assemType=value)
+                                    assemType=value
+                                )
                             else:
                                 raise RuntimeError(
-                                    "{} is not defined in the blueprint".format(value))
+                                    "{} is not defined in the blueprint".format(value)
+                                )
                         # is assemblyLocation in the SFP
                         elif setting.lower() == "sfp":
-                            if value in [i.getName() for i in fuelHandler.r.core.sfp.getChildren()]:
-                                assembly = fuelHandler.r.core.sfp.getAssembly(
-                                    value)
+                            if value in [
+                                i.getName()
+                                for i in fuelHandler.r.core.sfp.getChildren()
+                            ]:
+                                assembly = fuelHandler.r.core.sfp.getAssembly(value)
                             else:
                                 raise RuntimeError(
-                                    "{} does not exist in the SFP".format(value))
+                                    "{} does not exist in the SFP".format(value)
+                                )
                         # is the enrichment changing
                         elif setting.lower() == "enrichment":
                             if assembly and _is_list(value):
-                                changeBlockLevelEnrichment(
-                                    assembly, json.loads(value))
+                                changeBlockLevelEnrichment(assembly, json.loads(value))
                             else:
                                 raise RuntimeError(
-                                    "{} is not a valid enrichment".format(value))
+                                    "{} is not a valid enrichment".format(value)
+                                )
                         else:
                             raise NotImplementedError(
-                                "Setting, {}, not reconized".format(setting))
+                                "Setting, {}, not reconized".format(setting)
+                            )
                     zoneAssembly.append(assembly)
                 except:
-                    raise RuntimeError(
-                        "Error loading assemblies, check inputs")
+                    raise RuntimeError("Error loading assemblies, check inputs")
 
         # if sort function provided, sort assemblies
         if sortFun:
@@ -439,10 +447,7 @@ def getBatchZoneAssembliesFromLocation(
     return batchAssemblyArray
 
 
-def getCascadesFromLocations(
-    fuelHandler,
-    cascadeAssemblyLocations
-):
+def getCascadesFromLocations(fuelHandler, cascadeAssemblyLocations):
     r"""
     Translate lists of locations into cascade shuffle data structure. This function converts an array of
     location strings into an array of assemblies. The locations in each list should be provided in order
@@ -475,9 +480,8 @@ def getCascadesFromLocations(
     """
 
     return getBatchZoneAssembliesFromLocation(
-        fuelHandler,
-        batchZoneAssembliesLocations=cascadeAssemblyLocations,
-        sortFun=None)
+        fuelHandler, batchZoneAssembliesLocations=cascadeAssemblyLocations, sortFun=None
+    )
 
 
 def buildBatchCascades(
@@ -566,7 +570,7 @@ def buildBatchCascades(
                 sortedAssemblyTo[i].append(assemblyFrom[i])
                 tempChains[-1].append(sortedAssemblyTo[i])
             # Update assemblyFrom
-            assemblyFrom = assemblyFrom[len(sortedAssemblyTo):]
+            assemblyFrom = assemblyFrom[len(sortedAssemblyTo) :]
 
         elif len(tempChains[0]) == len(assemblyFrom):
             # Update tempChains to prevent doubling up
@@ -587,7 +591,7 @@ def buildBatchCascades(
 
         elif len(sortedAssemblyTo) > len(assemblyFrom):
             # Update tempChains to prevent doubling up
-            tempChains[0] = sortedAssemblyTo[len(assemblyFrom):]
+            tempChains[0] = sortedAssemblyTo[len(assemblyFrom) :]
             # Add assemblies to swap chains and update tempChains
             for i in range(len(assemblyFrom)):
                 sortedAssemblyTo[i].append(assemblyFrom[i])
@@ -608,12 +612,13 @@ def buildBatchCascades(
     # Reverse order to match convention
     for cascade in dataStructure:
         cascade.reverse()
-    
+
     if newFuelName:
         if newFuelName in dataStructure[0][0].parent.r.blueprints.assemblies.keys():
             for cascade in dataStructure:
                 cascade.append(
-                    cascade[-1].parent.createAssemblyOfType(assemType=newFuelName))
+                    cascade[-1].parent.createAssemblyOfType(assemType=newFuelName)
+                )
         else:
             raise ValueError("{} not a valid assembly name".format(newFuelName))
 
@@ -641,7 +646,9 @@ def changeBlockLevelEnrichment(
 
     if isinstance(enrichmentList, list):
         if len(assembly.getBlocks(Flags.FUEL)) == len(enrichmentList):
-            for block, enrichment in zip(assembly.getBlocks(Flags.FUEL), enrichmentList):
+            for block, enrichment in zip(
+                assembly.getBlocks(Flags.FUEL), enrichmentList
+            ):
                 block.adjustUEnrich(enrichment)
         else:
             raise RuntimeError(
@@ -652,9 +659,7 @@ def changeBlockLevelEnrichment(
         for block in assembly:
             block.adjustUEnrich(enrichmentList)
     else:
-        raise RuntimeError(
-            "{} is not a valid enrichment input".format(enrichmentList)
-        )
+        raise RuntimeError("{} is not a valid enrichment input".format(enrichmentList))
 
 
 def _defaultSort(assembly):

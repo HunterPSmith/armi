@@ -52,9 +52,10 @@ class FuelHandler:
     To use this, simply create an input Python file and point to it by path
     with the ``fuelHandler`` setting. In that file, subclass this object.
     """
+
     # Import functions
     from armi.physics.fuelCycle import translationFunctions
-    
+
     def __init__(self, operator):
         # we need access to the operator to find the core, get settings, grab
         # other interfaces, etc.
@@ -805,7 +806,7 @@ class FuelHandler:
                 return assemsInRings
         else:
             return minDiff[1]
-    
+
     def _getAssembliesInRings(
         self,
         ringList,
@@ -813,7 +814,7 @@ class FuelHandler:
         exactType=False,
         exclusions=None,
         circularRingFlag=False,
-        ):
+    ):
         r"""
         find assemblies in particular rings
 
@@ -891,7 +892,6 @@ class FuelHandler:
 
         return assemblyList
 
-    
     def swapAssemblies(self, a1, a2):
         r"""
         Moves a whole assembly from one place to another
