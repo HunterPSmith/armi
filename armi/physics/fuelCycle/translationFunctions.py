@@ -338,8 +338,8 @@ def getBatchZoneAssembliesFromLocation(
         An object for moving fuel around the core and reactor.
 
     batchZoneAssembliesLocations: list
-        A list of lists of assembly location strings. This function perserves the organization of this parameter.
-        This input should be organized by zone, from discharge to charge, and include all assembly location for
+        A list of lists of assembly location strings. This function preserves the organization of this parameter.
+        This input should be organized by zone, from discharge to charge, and include all assembly locations for
         each zone. See example above
 
     sortFun: function, optional
@@ -421,7 +421,9 @@ def getBatchZoneAssembliesFromLocation(
                         # is the enrichment changing
                         elif setting.lower() == "enrichment":
                             if assembly and _is_list(value):
-                                changeBlockLevelEnrichment(assembly, json.loads(value))
+                                enrList = json.loads(value)
+                                fuelEnr = [enr for enr in enrList if enr !=0]
+                                changeBlockLevelEnrichment(assembly, fuelEnr)
                             else:
                                 raise RuntimeError(
                                     "{} is not a valid enrichment".format(value)
