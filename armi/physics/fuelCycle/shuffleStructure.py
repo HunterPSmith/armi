@@ -5,7 +5,6 @@ from armi.reactor.assemblies import Assembly
 
 
 class shuffleDataStructure:
-
     def __init__(self, fuelHandler) -> None:
         self.fuelHandler = fuelHandler
         self.translations = [[]]
@@ -16,12 +15,12 @@ class shuffleDataStructure:
         Builds a ring shuffle based on user settings.
         """
         # initalize settings
-        internalRing = settings.get('internalRing', 1)
-        externalRing = settings.get('externalRing', None)
-        diverging = settings.get('diverging', False)
-        jumpRingFrom = settings.get('jumpRingFrom', None)
-        jumpRingTo = settings.get('jumpRingTo', None)
-        coarseFactor = settings.get('coarseFactor', 0.0)
+        internalRing = settings.get("internalRing", 1)
+        externalRing = settings.get("externalRing", None)
+        diverging = settings.get("diverging", False)
+        jumpRingFrom = settings.get("jumpRingFrom", None)
+        jumpRingTo = settings.get("jumpRingTo", None)
+        coarseFactor = settings.get("coarseFactor", 0.0)
         newFuelName = settings.get("newFuelName", None)
 
         ringList = translationFunctions.buildRingSchedule(
@@ -33,10 +32,11 @@ class shuffleDataStructure:
             jumpRingTo=jumpRingTo,
             coarseFactor=coarseFactor,
         )
-        ringAssemblies = translationFunctions.getRingAssemblies(self.fuelHandler, ringList)
+        ringAssemblies = translationFunctions.getRingAssemblies(
+            self.fuelHandler, ringList
+        )
         self.translations = translationFunctions.buildBatchCascades(
-            ringAssemblies,
-            newFuelName=newFuelName
+            ringAssemblies, newFuelName=newFuelName
         )
 
     def buildRepeatShuffle(self, updateExistingEnrichment=False):
@@ -57,17 +57,18 @@ class shuffleDataStructure:
         """
 
         allAsssemblies = [
-            assembly for assemblyList in self.translations for assembly in assemblyList]
+            assembly for assemblyList in self.translations for assembly in assemblyList
+        ]
 
         # Check for duplicates
         if len(allAsssemblies) == len(set(allAsssemblies)):
             # Check that all elements are valid assemblies
             for assembly in allAsssemblies:
                 if not issubclass(type(assembly), Assembly):
-                    raise ValueError(
-                        "{} is not a valid assembly".format(assembly))
+                    raise ValueError("{} is not a valid assembly".format(assembly))
         else:
             for assembly in allAsssemblies:
                 if allAsssemblies.count(assembly) > 1:
                     raise ValueError(
-                        "{} set to translate more than once".format(assembly))
+                        "{} set to translate more than once".format(assembly)
+                    )

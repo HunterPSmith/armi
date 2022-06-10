@@ -422,7 +422,7 @@ def getBatchZoneAssembliesFromLocation(
                         elif setting.lower() == "enrichment":
                             if assembly and _is_list(value):
                                 enrList = json.loads(value)
-                                fuelEnr = [enr for enr in enrList if enr !=0]
+                                fuelEnr = [enr for enr in enrList if enr != 0]
                                 changeBlockLevelEnrichment(assembly, fuelEnr)
                             else:
                                 raise RuntimeError(

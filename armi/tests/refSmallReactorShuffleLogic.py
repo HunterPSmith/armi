@@ -34,7 +34,11 @@ class EquilibriumShuffler(fuelHandlers.FuelHandler):
             if not a:
                 raise RuntimeError("No assembly in {0} {1}".format(ring, pos))
             cascade.append(a.getLocation())
-        ss.translations = fuelHandlers.shuffleStructure.translationFunctions.getCascadesFromLocations(self, [cascade])
+        ss.translations = (
+            fuelHandlers.shuffleStructure.translationFunctions.getCascadesFromLocations(
+                self, [cascade]
+            )
+        )
         self.swapCascade(ss)
         fresh = self.r.blueprints.constructAssem(self.cs, name="igniter fuel")
         self.dischargeSwap(fresh, ss.translations[0][0])

@@ -52,7 +52,7 @@ class FuelHandler:
     To use this, simply create an input Python file and point to it by path
     with the ``fuelHandler`` setting. In that file, subclass this object.
     """
-    
+
     def __init__(self, operator):
         # we need access to the operator to find the core, get settings, grab
         # other interfaces, etc.
@@ -103,7 +103,7 @@ class FuelHandler:
                 "Cannot perform two outages with same FuelHandler instance."
             )
 
-                # Perform and record assembly translation
+            # Perform and record assembly translation
         self.chooseSwaps(factor)
 
         # Perform (and record) assembly rotations
@@ -118,13 +118,13 @@ class FuelHandler:
         Users should update this function to implement assembly translation logic in subclasses of fuelHandler.
         """
         runLog.important("No logic implemented in chooseSwaps")
-    
+
     def getFactorList(self, cycle):
         r"""
         Return cycle specific factor. Default is 1
         """
         return 1.0
-    
+
     def recordShuffle(self):
         r"""
         This function records information about the shuffle performed by this fuelHandler object
@@ -139,7 +139,7 @@ class FuelHandler:
         """
         if self.moved:
             numMoved = len(self.moved) * self.r.core.powerMultiplier
-    
+
             for assembly in self.moved:
                 try:
                     self.r.core.setMoveList(
@@ -154,53 +154,54 @@ class FuelHandler:
                     )
                 except:
                     runLog.important("A fuel management error has occurred. ")
-                    runLog.important(
-                        "Trying operation on assembly {}".format(assembly))
+                    runLog.important("Trying operation on assembly {}".format(assembly))
                     runLog.important("The moved list is {}".format(self.moved))
                     raise
         else:
             numMoved = 0
-    
+
         self.o.r.core.p.numMoves = numMoved
-    
+
         runLog.important(
-            "Fuel handler performed {0} assembly shuffles.".format(numMoved))
+            "Fuel handler performed {0} assembly shuffles.".format(numMoved)
+        )
 
     def chooseRotations(self):
         r"""
         This function manages assembly rotations between cycles.
         Users should not use this function to implement assembly rotation logic in subclasses of fuelHandler, unlike chooseSwaps.
-        The rotation function to be used is defined by self.cs["assemblyRotationAlgorithm"]. Users should create a new function with 
+        The rotation function to be used is defined by self.cs["assemblyRotationAlgorithm"]. Users should create a new function with
         the desired rotation logic if self.cs["assemblyRotationAlgorithm"] is not one of the default rotation functions.
         """
         if hasattr(rotationFunctions, self.cs["assemblyRotationAlgorithm"]):
             rotationMethod = getattr(
-                rotationFunctions, self.cs["assemblyRotationAlgorithm"])
+                rotationFunctions, self.cs["assemblyRotationAlgorithm"]
+            )
         elif hasattr(self, self.cs["assemblyRotationAlgorithm"]):
-            rotationMethod = getattr(
-                self, self.cs["assemblyRotationAlgorithm"])
+            rotationMethod = getattr(self, self.cs["assemblyRotationAlgorithm"])
         else:
-            raise RuntimeError("FuelHandler {0} does not have a rotation algorithm called {1}.\n"
-                               'Change your "assemblyRotationAlgorithm" setting'
-                               "".format(self, self.cs["assemblyRotationAlgorithm"]))
-    
-        rotationMethod(self)    
-    
+            raise RuntimeError(
+                "FuelHandler {0} does not have a rotation algorithm called {1}.\n"
+                'Change your "assemblyRotationAlgorithm" setting'
+                "".format(self, self.cs["assemblyRotationAlgorithm"])
+            )
+
+        rotationMethod(self)
+
     def prepCore(self):
         r"""
         Pre-fuel managment function space to update object parameters.
         Built in function calls .core.locateAllAssemblies() to update
-        lastLocationLabel of all assembly objects in the core. 
+        lastLocationLabel of all assembly objects in the core.
         """
         self.r.core.locateAllAssemblies()
-    
+
     def prepShuffleMap(self):
         """Prepare a table of current locations for plotting shuffle maneuvers."""
         self.oldLocations = {}
         for a in self.r.core.getAssemblies():
             self.oldLocations[a.getName()] = a.spatialLocator.getGlobalCoordinates()
 
-    
     def prepSearch(self, *args, **kwargs):
         """
         Optional method that can be implemented in preparation of shuffling.
@@ -966,8 +967,10 @@ class FuelHandler:
             cascInput.checkTranslations()
 
         else:
-            raise ValueError("Translations were not provided in the correct format.\n"
-            "Provide translations as shuffleStructure Class.")
+            raise ValueError(
+                "Translations were not provided in the correct format.\n"
+                "Provide translations as shuffleStructure Class."
+            )
 
         # Run cascade swaps
         for assemList in cascInput.translations:
@@ -976,9 +979,14 @@ class FuelHandler:
                 if not assemList[level + 1]:
                     # If None element is in the cascade it will be skipped.
                     runLog.extra(
-                        "Skipping level %d in the cascade because it is None" % (level + 1))
+                        "Skipping level %d in the cascade because it is None"
+                        % (level + 1)
+                    )
                     continue
-                if assemList[level + 1].getLocation() == "LoadQueue" or assemList[level + 1].getLocation() == "SFP":
+                if (
+                    assemList[level + 1].getLocation() == "LoadQueue"
+                    or assemList[level + 1].getLocation() == "SFP"
+                ):
                     self.dischargeSwap(assemList[level + 1], assemList[0])
                 elif assemList[0].getLocation() == "SFP":
                     self.dischargeSwap(assemList[0], assemList[level + 1])

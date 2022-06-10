@@ -156,15 +156,17 @@ class FuelHandlerInterface(interfaces.Interface):
                 ) in movesThisCycle:
                     if not fromLoc == toLoc:
                         enrichLine = " ".join(
-                            ["{0:.8f}".format(enrich) for enrich in chargeEnrich])
+                            ["{0:.8f}".format(enrich) for enrich in chargeEnrich]
+                        )
                         out.write(
                             "{0} moved from {1} to {2} with assembly type {3} with enrich list: {4}\n"
-                            "".format(movingAssemName,
-                                      fromLoc,
-                                      toLoc,
-                                      assemblyType,
-                                      enrichLine,
-                                      )
+                            "".format(
+                                movingAssemName,
+                                fromLoc,
+                                toLoc,
+                                assemblyType,
+                                enrichLine,
+                            )
                         )
                 for (
                     _,
@@ -179,11 +181,12 @@ class FuelHandlerInterface(interfaces.Interface):
                         # If assembly is entering the core, provide extra information
                         out.write(
                             "{0} at {1} was rotated from {2} to {3}\n"
-                            "".format(movingAssemName,
-                                      toLoc,
-                                      fromRot,
-                                      toRot,
-                                      )
+                            "".format(
+                                movingAssemName,
+                                toLoc,
+                                fromRot,
+                                toRot,
+                            )
                         )
             out.write("\n")
         out.close()

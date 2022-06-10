@@ -107,7 +107,7 @@ class Assembly(composites.Composite):
         self.pinPeakingFactors = []  # assembly-averaged pin power peaking factors
         self.lastLocationLabel = self.LOAD_QUEUE
         self.p.orientation = numpy.array((0.0, 0.0, 0.0))
-        self.lastRotationLabel = self.getRotationNum()                                                 
+        self.lastRotationLabel = self.getRotationNum()
 
     def __repr__(self):
         msg = "<{typeName} Assembly {name} at {loc}>".format(
@@ -1217,9 +1217,9 @@ class Assembly(composites.Composite):
 
     def rotate(self, deg):
         """Rotates the spatial variables on an assembly the specified angle.
-    
+
         Each block on the assembly is rotated in turn.
-    
+
         Parameters
         ----------
         deg - float

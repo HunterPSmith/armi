@@ -43,10 +43,12 @@ def getRepeatShuffle(
             for assembly in cascade:
                 if "SFP" in assembly.getLocation():
                     enrichment = [
-                        i[3] for i in translationList if i[0] in assembly.getName()]
+                        i[3] for i in translationList if i[0] in assembly.getName()
+                    ]
                 elif assembly.getLocation()[:3].isnumeric():
                     enrichment = [
-                        i[3] for i in translationList if i[1] in assembly.getLocation()]
+                        i[3] for i in translationList if i[1] in assembly.getLocation()
+                    ]
 
                 translationFunctions.changeBlockLevelEnrichment(assembly, enrichment)
 
@@ -120,13 +122,14 @@ def readMoves(fName):
             pass
 
         else:
-            runLog.info(
-                'Failed to parse line "{0}" in shuffle file'.format(line))
+            runLog.info('Failed to parse line "{0}" in shuffle file'.format(line))
 
     f.close()
 
     runLog.info(
-        "Read {0} translations over {1} cycles".format(numTranslations, len(translations.keys()))
+        "Read {0} translations over {1} cycles".format(
+            numTranslations, len(translations.keys())
+        )
     )
 
     return translations
@@ -169,8 +172,7 @@ def processTranslationList(
                 cascade.remove("SFP")
             else:
                 raise InputError(
-                    "Cascade incomplete, missing charge assembly: "
-                    "{}".format(cascade)
+                    "Cascade incomplete, missing charge assembly: " "{}".format(cascade)
                 )
     # Convert string to data structure
     return translationFunctions.getCascadesFromLocations(fuelHandler, shuffleList)

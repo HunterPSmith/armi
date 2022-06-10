@@ -71,7 +71,9 @@ class FuelHandlerPlugin(plugins.ArmiPlugin):
             enabled = cs["runType"] != operators.RunTypes.SNAPSHOTS
             return [
                 interfaces.InterfaceInfo(
-                    ORDER, fuelHandlerInterface.FuelHandlerInterface, {"enabled": enabled}
+                    ORDER,
+                    fuelHandlerInterface.FuelHandlerInterface,
+                    {"enabled": enabled},
                 )
             ]
 
