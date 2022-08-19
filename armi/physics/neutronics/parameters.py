@@ -186,58 +186,6 @@ def _getNeutronicsBlockParams():
         )
 
         pb.defParam(
-            "pinPowers",
-            units="W/cm",
-            description="""
-                The block-level pin linear power densities. pinPowers[i] represents the average linear power density of
-                pin i.  Power units are Watts/cm (Watts produced per cm of pin length).  The "ARMI pin ordering" is
-                used, which is counter-clockwise from 3 o'clock.  See TP1-1.9.31-RPT-0010 for more details.
-            """,
-            saveToDB=True,
-            default=None,
-        )
-
-        def pinPowersNeutron(self, value):
-            self._p_pinPowersNeutron = (
-                value
-                if value is None or isinstance(value, numpy.ndarray)
-                else numpy.array(value)
-            )
-
-        pb.defParam(
-            "pinPowersNeutron",
-            setter=pinPowersNeutron,
-            units="W/cm",
-            description="""
-                The block-level pin linear power densities from neutron-induced
-                interactions. pinPowersNeutron[i] represents the average linear power density of pin i
-                (from neutron heating). Power units are Watts/cm (Watts produced per cm of pin length).
-            """,
-            saveToDB=True,
-            default=None,
-        )
-
-        def pinPowersGamma(self, value):
-            self._p_pinPowersGamma = (
-                value
-                if value is None or isinstance(value, numpy.ndarray)
-                else numpy.array(value)
-            )
-
-        pb.defParam(
-            "pinPowersGamma",
-            setter=pinPowersGamma,
-            units="W/cm",
-            description="""
-                The block-level pin linear power densities from gamma heating.
-                pinPowersGamma[i] represents the average linear power density of pin i (from gamma
-                heating). Power units are Watts/cm (Watts produced per cm of pin length).",
-            """,
-            saveToDB=True,
-            default=None,
-        )
-
-        pb.defParam(
             "axialPowerProfile",
             units="",
             description="""
@@ -781,7 +729,7 @@ def _getNeutronicsBlockParams():
             units="n/cm^2/s",
             description="Neutron flux above 100keV at hexagon block corners",
             location=ParamLocation.CORNERS,
-            saveToDB=False,
+            saveToDB=True,
         )
 
         # This quantity should eventually be part of category 'detailedAxialExpansion'
@@ -791,7 +739,7 @@ def _getNeutronicsBlockParams():
             units=None,
             description="Fraction of flux above 100keV at points within the block",
             location=ParamLocation.CHILDREN,
-            saveToDB=False,
+            saveToDB=True,
         )
 
         # This quantity should eventually be part of category 'detailedAxialExpansion'
@@ -802,7 +750,7 @@ def _getNeutronicsBlockParams():
             description="displacements per atom at points within the block",
             location=ParamLocation.CHILDREN,
             categories=["cumulative"],
-            saveToDB=False,
+            saveToDB=True,
             default=0.0,
         )
 
@@ -813,7 +761,7 @@ def _getNeutronicsBlockParams():
             units="dpa/s",
             description="Current time derivative of the displacement per atoms at points within the block",
             location=ParamLocation.CHILDREN,
-            saveToDB=False,
+            saveToDB=True,
         )
 
         pb.defParam(

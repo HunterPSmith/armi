@@ -26,7 +26,6 @@ import enum
 import gc
 import getpass
 import os
-import shutil
 import sys
 import time
 
@@ -100,7 +99,7 @@ Mode.setMode(CURRENT_MODE)
 
 MPI_COMM = None
 # MPI_RANK represents the index of the CPU that is running.
-# 0 is typically the master CPU, while 1+ are typically workers.
+# 0 is typically the primary CPU, while 1+ are typically workers.
 # MPI_SIZE is the total number of CPUs
 MPI_RANK = 0
 MPI_SIZE = 1
@@ -129,10 +128,13 @@ except ImportError:
     pass
 
 try:
+    # trying a windows approach
     APP_DATA = os.path.join(os.environ["APPDATA"], "armi")
+    APP_DATA = APP_DATA.replace("/", "\\")
 except:  # pylint: disable=bare-except
     # non-windows
     APP_DATA = os.path.expanduser("~/.armi")
+
 if MPI_NODENAMES.index(MPI_NODENAME) == MPI_RANK:
     if not os.path.isdir(APP_DATA):
         try:
@@ -145,7 +147,7 @@ if MPI_NODENAMES.index(MPI_NODENAME) == MPI_RANK:
 if MPI_COMM is not None:
     MPI_COMM.barrier()  # make sure app data exists before workers proceed.
 
-MPI_DISTRIBUTABLE = MPI_RANK == 0 and MPI_SIZE > 1
+MPI_DISTRIBUTABLE = MPI_SIZE > 1
 
 _FAST_PATH = os.path.join(os.getcwd())
 """
@@ -174,7 +176,12 @@ def activateLocalFastPath() -> None:
     instantiate one operator after the other, the path will already exist the second time.
     The directory is created in the Operator constructor.
     """
-    global _FAST_PATH, _FAST_PATH_IS_TEMPORARY  # pylint: disable=global-statement
+    global _FAST_PATH, _FAST_PATH_IS_TEMPORARY, APP_DATA  # pylint: disable=global-statement
+
+    # Try to fix pathing issues in Windows.
+    if os.name == "nt":
+        APP_DATA = APP_DATA.replace("/", "\\")
+
     _FAST_PATH = os.path.join(
         APP_DATA,
         "{}{}-{}".format(
@@ -183,6 +190,7 @@ def activateLocalFastPath() -> None:
             datetime.datetime.now().strftime("%Y%m%d%H%M%S%f"),
         ),
     )
+
     _FAST_PATH_IS_TEMPORARY = True
 
 
@@ -230,7 +238,7 @@ def cleanTempDirs(olderThanDays=None):
                 file=sys.stdout,
             )
         try:
-            cleanPath(_FAST_PATH)
+            cleanPath(_FAST_PATH, mpiRank=MPI_RANK)
         except Exception as error:  # pylint: disable=broad-except
             for outputStream in (sys.stderr, sys.stdout):
                 if printMsg:
@@ -271,9 +279,17 @@ def cleanAllArmiTempDirs(olderThanDays: int) -> None:
             runIsOldAndLikleyComplete = (now - dateOfFolder) > gracePeriod
             if runIsOldAndLikleyComplete or fromThisRun:
                 # Delete old files
-                cleanPath(dirPath)
+                cleanPath(dirPath, mpiRank=MPI_RANK)
         except:  # pylint: disable=bare-except
             pass
+
+
+def waitAll() -> None:
+    """
+    If there are parallel processes running, wait for all to catch up to the checkpoint.
+    """
+    if MPI_SIZE > 1 and MPI_DISTRIBUTABLE:
+        MPI_COMM.barrier()
 
 
 def disconnectAllHdfDBs() -> None:

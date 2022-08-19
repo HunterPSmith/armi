@@ -55,6 +55,7 @@ from armi.utils import createFormattedStrWithDelimiter, units
 from armi.utils import directoryChangers
 from armi.utils.iterables import Sequence
 from armi.utils.mathematics import average1DWithinTolerance
+from armi.reactor.converters.axialExpansionChanger import AxialExpansionChanger
 
 # init logger
 runLog = logging.getLogger(__name__)
@@ -123,9 +124,7 @@ def loadFromCs(cs):
 
 
 def factory(cs, bp, geom: Optional[systemLayoutInput.SystemLayoutInput] = None):
-    """
-    Build a reactor from input settings, blueprints and geometry.
-    """
+    """Build a reactor from input settings, blueprints and geometry."""
     from armi.reactor import blueprints
 
     runLog.header("=========== Constructing Reactor and Verifying Inputs ===========")
@@ -184,10 +183,6 @@ class Core(composites.Composite):
         ----------
         name : str
             Name of the object. Flags will inherit from this.
-        geom : SystemLayoutInput object
-            Contains face-map
-        cs : CaseSettings object, optional
-            the calculation settings dictionary
         """
         composites.Composite.__init__(self, name)
         self.p.flags = Flags.fromStringIgnoreErrors(name)
@@ -220,6 +215,7 @@ class Core(composites.Composite):
         self._circularRingPitch = 1.0
         self._automaticVariableMesh = False
         self._minMeshSizeRatio = 0.15
+        self._detailedAxialExpansion = False
 
     def setOptionsFromCs(self, cs):
         # these are really "user modifiable modeling constants"
@@ -230,6 +226,7 @@ class Core(composites.Composite):
         self._circularRingPitch = cs["circularRingPitch"]
         self._automaticVariableMesh = cs["automaticVariableMesh"]
         self._minMeshSizeRatio = cs["minMeshSizeRatio"]
+        self._detailedAxialExpansion = cs["detailedAxialExpansion"]
 
     def __getstate__(self):
         """Applies a settings and parent to the core and components."""
@@ -403,18 +400,20 @@ class Core(composites.Composite):
         discharge : bool, optional
             Discharge the assembly, including adding it to the SFP. Default: True
 
+        Notes
+        -----
+        Please expect this method will delete your assembly (instead of moving it to a
+        Spent Fuel Pool) unless you set the ``trackAssems`` to True in your settings file.
 
         Originally, this held onto all assemblies in the spend fuel pool. However, having
-        this sitting in memory becomes constraining for large problems. It is more
+        this sitting in memory becomes constraining for large simulations. It is more
         memory-efficient to only save the assemblies that are required for detailed
         history tracking. In fact, there's no need to save the assembly object at all,
-        just have the history interface save the relevant parameters. This is an important
-        cleanup.
+        just have the history interface save the relevant parameters.
 
         See Also
         --------
         add : adds an assembly
-
         """
         paramDefs = set(parameters.ALL_DEFINITIONS)
         paramDefs.difference_update(set(parameters.forType(Core)))
@@ -436,12 +435,28 @@ class Core(composites.Composite):
         else:
             self._removeListFromAuxiliaries(a1)
 
-    def removeAssembliesInRing(self, ringNum):
+    def removeAssembliesInRing(self, ringNum, overrideCircularRingMode=False):
         """
         Removes all of the assemblies in a given ring
+
+        Parameters
+        ----------
+        ringNum : int
+            The ring to remove
+
+        overrideCircularRingMode : bool, optional
+            False ~ default: use circular/square/hex rings, just as the reactor defines them
+            True ~ If you know you don't want to use the circular ring mode, and instead want square or hex.
+
+        See Also
+        --------
+        getAssembliesInRing : definition of a ring
         """
-        for a in self.getAssembliesInRing(ringNum):
+        for a in self.getAssembliesInRing(
+            ringNum, overrideCircularRingMode=overrideCircularRingMode
+        ):
             self.removeAssembly(a)
+
         self.processLoading(settings.getMasterCs())
 
     def _removeListFromAuxiliaries(self, assembly):
@@ -647,36 +662,6 @@ class Core(composites.Composite):
         """
         return self.lib.numGroups
 
-    # NOTE: this method is never used
-    def countAssemblies(self, typeList, ring=None, fullCore=False):
-        """
-        Counts the number of assemblies of type in ring (or in full reactor)
-
-        Parameters
-        ----------
-        typeList : iterable, optional
-            Restruct counts to this assembly type.
-
-        rings : int
-            The reactor ring to find assemblies in
-
-        fullCore : bool, optional
-            If True, will consider the core symmetry. Default: False
-        """
-        assems = (a for a in self if a.hasFlags(typeList, exact=True))
-
-        if ring is not None:
-            assems = (a for a in assems if a.spatialLocator.getRingPos()[0] == ring)
-
-        if not fullCore:
-            return sum(1 for _a in assems)
-
-        pmult = self.powerMultiplier  # value is loop-independent
-
-        rings = (a.spatialLocator.getRingPos()[0] for a in assems)
-
-        return sum(1 if r == 1 else pmult for r in rings)
-
     def countBlocksWithFlags(self, blockTypeSpec, assemTypeSpec=None):
         """
         Return the total number of blocks in an assembly in the reactor that
@@ -747,7 +732,12 @@ class Core(composites.Composite):
             return float("inf")
 
     def getAssembliesInRing(
-        self, ring, typeSpec=None, exactType=False, exclusions=None
+        self,
+        ring,
+        typeSpec=None,
+        exactType=False,
+        exclusions=None,
+        overrideCircularRingMode=False,
     ):
         """
         Returns the assemblies in a specified ring. Definitions of rings can change
@@ -770,13 +760,16 @@ class Core(composites.Composite):
         exclusions : list of assemblies
             list of assemblies that are not to be considered
 
+        overrideCircularRingMode : bool, optional
+            False ~ default: use circular/square/hex rings, just as the reactor defines them
+            True ~ If you know you don't want to use the circular ring mode, and instead want square or hex.
+
         Returns
         -------
         aList : list of assemblies
             A list of assemblies that match the criteria within the ring
-
         """
-        if self._circularRingMode:
+        if self._circularRingMode and not overrideCircularRingMode:
             getter = self.getAssembliesInCircularRing
         else:
             getter = self.getAssembliesInSquareOrHexRing
@@ -1062,6 +1055,27 @@ class Core(composites.Composite):
 
         return assems
 
+    def getNozzleTypes(self):
+        """
+        Get a dictionary of all of the assembly ``nozzleType``s in the core.
+
+        Returns
+        -------
+        nozzles : dict
+            A dictionary of ``{nozzleType: nozzleID}`` pairs, where the nozzleIDs are
+            numbers corresponding to the alphabetical order of the ``nozzleType`` names.
+
+        Notes
+        -----
+        Getting the ``nozzleID`` by alphabetical order could cause a problem if a new
+        ``nozzleType`` is added during a run. This problem should not occur with the
+        ``includeBolAssems=True`` argument provided.
+        """
+        nozzleList = list(
+            set(a.p.nozzleType for a in self.getAssemblies(includeBolAssems=True))
+        )
+        return {nozzleType: i for i, nozzleType in enumerate(sorted(nozzleList))}
+
     def getBlockByName(self, name):
         """
         Finds a block based on its name.
@@ -1307,7 +1321,7 @@ class Core(composites.Composite):
         assemblyLevel : bool, optional
             If True, will find assemblies rather than blocks
         locContents : dict, optional
-            A master lookup table with location string keys and block/assembly values
+            A lookup table with location string keys and block/assembly values
             useful if you want to call this function many times and would like a speedup.
 
         Returns
@@ -1642,7 +1656,6 @@ class Core(composites.Composite):
         -----
         createFreshFeed and createAssemblyOfType and this
         all need to be merged together somehow.
-
         """
         return self.createAssemblyOfType(assemType=self._freshFeedType)
 
@@ -1673,8 +1686,8 @@ class Core(composites.Composite):
 
         See Also
         --------
-        $$armi.fuelHandler.doRepeatShuffle : uses this to repeat shuffling
 
+        $$armi.fuelHandler.doRepeatShuffle : uses this to repeat shuffling
         """
         a = self.parent.blueprints.constructAssem(
             cs or settings.getMasterCs(), name=assemType
@@ -1702,6 +1715,12 @@ class Core(composites.Composite):
                     # WARNING: If this is not fresh fuel, this messes up the number of moles of HM at BOL and
                     # therefore breaks the burnup metric.
                     b.adjustUEnrich(enrich)
+
+        if not self._detailedAxialExpansion:
+            # if detailedAxialExpansion: False, make sure that the assembly being created has the correct core mesh
+            a.setBlockMesh(
+                self.p.referenceBlockAxialMesh[1:], conserveMassFlag="auto"
+            )  # pass [1:] to skip 0.0
 
         return a
 
@@ -1834,7 +1853,7 @@ class Core(composites.Composite):
 
         See Also
         --------
-        processLoading : sets up the master mesh that this perturbs.
+        processLoading : sets up the primary mesh that this perturbs.
         """
         # most of the time, we want fuel, but they should mostly have the same number of blocks
         # if this becomes a problem, we might find either the
@@ -1976,14 +1995,12 @@ class Core(composites.Composite):
 
         Parameters
         ----------
-
         target : float
             This is the fraction of the total reactor fuel flux compared to the flux in a
             specific assembly in a ring
 
         Returns
         -------
-
         targetRing, fraction of flux : tuple
             targetRing is the ring with the fraction of flux that best meets the target.
         """
@@ -2078,7 +2095,7 @@ class Core(composites.Composite):
         Parameters
         ----------
         mats : iterable or Material
-            List (or single) of materials to scan the full core for, accumulating a master nuclide list
+            List (or single) of materials to scan the full core for, accumulating a nuclide list
 
         Returns
         -------
@@ -2095,7 +2112,6 @@ class Core(composites.Composite):
         If you need to know the nuclides in a fuel pin, you can't just use the sample returned
         from getDominantMaterial, because it may be a fresh fuel material (U and Zr) even though
         there are burned materials elsewhere (with U, Zr, Pu, LFP, etc.).
-
         """
         if not isinstance(mats, list):
             # single material passed in
@@ -2205,7 +2221,7 @@ class Core(composites.Composite):
             fuelBottoms.append(fuelHeightInCm)
         return lowestFuelHeightInCm
 
-    def processLoading(self, cs):
+    def processLoading(self, cs, dbLoad: bool = False):
         """
         After nuclide densities are loaded, this goes through and prepares the reactor.
 
@@ -2226,8 +2242,6 @@ class Core(composites.Composite):
             "=========== Initializing Mesh, Assembly Zones, and Nuclide Categories =========== "
         )
 
-        self.p.power = cs["power"]
-
         for b in self.getBlocks():
             if b.p.molesHmBOL > 0.0:
                 break
@@ -2239,13 +2253,54 @@ class Core(composites.Composite):
                 "Please make sure that this is intended and not a input error."
             )
 
-        self.p.axialMesh = self.findAllAxialMeshPoints()
-        refAssem = self.refAssem
+        nonUniformAssems = [Flags.fromString(t) for t in cs["nonUniformAssemFlags"]]
+        if dbLoad:
+            # reactor.blueprints.assemblies need to be populated
+            # this normally happens during armi/reactor/blueprints/__init__.py::constructAssem
+            # but for DB load, this is not called so it must be here.
+            # pylint: disable=protected-access
+            self.parent.blueprints._prepConstruction(cs)
+            if not cs["detailedAxialExpansion"]:
+                # Apply mesh snapping for self.parent.blueprints.assemblies
+                # This is stored as a param for assemblies in-core, so only blueprints assemblies are
+                # considered here. To guarantee mesh snapping will function, makeAxialSnapList
+                # should be in reference to the assembly with the finest mesh as defined in the blueprints.
+                finestMeshAssembly = sorted(
+                    self.parent.blueprints.assemblies.values(),
+                    key=lambda a: len(a),
+                    reverse=True,
+                )[0]
+                for a in self.parent.blueprints.assemblies.values():
+                    if a.hasFlags(nonUniformAssems, exact=True):
+                        continue
+                    a.makeAxialSnapList(refAssem=finestMeshAssembly)
+            if not cs["inputHeightsConsideredHot"]:
+                runLog.header(
+                    "=========== Axially expanding blueprints assemblies (except control) from Tinput to Thot ==========="
+                )
+                self._applyThermalExpansion(
+                    self.parent.blueprints.assemblies.values(),
+                    dbLoad,
+                    finestMeshAssembly,
+                )
 
-        if not cs["detailedAxialExpansion"]:
-            for a in self.getAssemblies(includeBolAssems=True):
-                # prepare for mesh snapping during axial expansion
-                a.makeAxialSnapList(refAssem)
+        else:
+            if not cs["detailedAxialExpansion"]:
+                # prepare core for mesh snapping during axial expansion
+                for a in self.getAssemblies(includeAll=True):
+                    if a.hasFlags(nonUniformAssems, exact=True):
+                        continue
+                    a.makeAxialSnapList(self.refAssem)
+            if not cs["inputHeightsConsideredHot"]:
+                runLog.header(
+                    "=========== Axially expanding all assemblies (except control) from Tinput to Thot ==========="
+                )
+                self._applyThermalExpansion(self.getAssemblies(includeAll=True), dbLoad)
+
+            self.p.referenceBlockAxialMesh = self.findAllAxialMeshPoints(
+                applySubMesh=False
+            )
+            self.p.axialMesh = self.findAllAxialMeshPoints()
 
         self.numRings = self.getNumRings()  # TODO: why needed?
 
@@ -2271,3 +2326,43 @@ class Core(composites.Composite):
         self.p.maxAssemNum = self.getMaxParam("assemNum")
 
         getPluginManagerOrFail().hook.onProcessCoreLoading(core=self, cs=cs)
+
+    def _applyThermalExpansion(
+        self, assems: list, dbLoad: bool, referenceAssembly=None
+    ):
+        """expand assemblies, resolve disjoint axial mesh (if needed), and update block BOL heights
+
+        Parameters
+        ----------
+        assems: list
+            list of :py:class:`Assembly <armi.reactor.assemblies.Assembly>` objects to be thermally expanded
+        dbLoad: bool
+            boolean to determine if Core::processLoading is loading a database or constructing a Core
+        referenceAssembly: optional, :py:class:`Assembly <armi.reactor.assemblies.Assembly>`
+            is the thermally expanded assembly whose axial mesh is used to snap the
+            blueprints assemblies axial mesh to
+        """
+        axialExpChngr = AxialExpansionChanger(self._detailedAxialExpansion)
+        for a in assems:
+            if not a.hasFlags(Flags.CONTROL):
+                axialExpChngr.setAssembly(a)
+                # this doesn't get applied to control assems, so CR will be interpreted
+                # as hot. This should be conservative because the control rods will
+                # be modeled as slightly shorter with the correct hot density. Density
+                # is more important than height, so we are forcing density to be correct
+                # since we can't do axial expansion (yet)
+                axialExpChngr.applyColdHeightMassIncrease()
+                axialExpChngr.expansionData.computeThermalExpansionFactors()
+                axialExpChngr.axiallyExpandAssembly(thermal=True)
+        # resolve axially disjoint mesh (if needed)
+        if not dbLoad:
+            axialExpChngr.manageCoreMesh(self.parent)
+        elif not self._detailedAxialExpansion:
+            for a in assems:
+                if not a.hasFlags(Flags.CONTROL):
+                    a.setBlockMesh(referenceAssembly.getAxialMesh())
+        # update block BOL heights to reflect hot heights
+        for a in assems:
+            if not a.hasFlags(Flags.CONTROL):
+                for b in a:
+                    b.p.heightBOL = b.getHeight()

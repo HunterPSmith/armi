@@ -14,16 +14,19 @@
 
 r""" Tests for the Database3 class
 """
+# pylint: disable=missing-function-docstring,missing-class-docstring,abstract-method,protected-access,no-member,disallowed-name,invalid-name
 import subprocess
 import unittest
 
 import h5py
 import numpy
 
-from armi.bookkeeping.db import database3
+from armi.bookkeeping.db import _getH5File, database3
 from armi.reactor import grids
+from armi.reactor import parameters
 from armi.reactor.tests import test_reactors
 from armi.tests import TEST_ROOT
+from armi.utils import getPreviousTimeNode
 from armi.utils.directoryChangers import TemporaryDirectoryChanger
 
 
@@ -48,6 +51,45 @@ class TestDatabase3(unittest.TestCase):
         self.db.close()
         self.stateRetainer.__exit__()
         self.td.__exit__(None, None, None)
+
+    def test_writeToDB(self):
+        self.r.p.cycle = 0
+        self.r.p.timeNode = 0
+        self.r.p.cycleLength = 0
+
+        # Adding some nonsense in, to test NoDefault params
+        self.r.p.availabilityFactor = parameters.NoDefault
+
+        # validate that the H5 file gets bigger after the write
+        self.assertEqual(list(self.db.h5db.keys()), ["inputs"])
+        self.db.writeToDB(self.r)
+        self.assertEqual(sorted(self.db.h5db.keys()), ["c00n00", "inputs"])
+
+        keys = [
+            "Circle",
+            "Core",
+            "DerivedShape",
+            "Helix",
+            "HexAssembly",
+            "HexBlock",
+            "Hexagon",
+            "Reactor",
+            "layout",
+        ]
+        self.assertEqual(sorted(self.db.h5db["c00n00"].keys()), sorted(keys))
+
+        # validate availabilityFactor did not make it into the H5 file
+        rKeys = ["cycle", "cycleLength", "flags", "serialNum", "timeNode"]
+        self.assertEqual(
+            sorted(self.db.h5db["c00n00"]["Reactor"].keys()), sorted(rKeys)
+        )
+
+    def test_getH5File(self):
+        with self.assertRaises(TypeError):
+            _getH5File(None)
+
+        h5 = _getH5File(self.db)
+        self.assertEqual(type(h5), h5py.File)
 
     def makeHistory(self):
         """Walk the reactor through a few time steps and write them to the db."""
@@ -128,6 +170,86 @@ class TestDatabase3(unittest.TestCase):
         roundTrip = database3.unpackSpecialData(packed, attrs, "testing")
         self._compareArrays(data, roundTrip)
 
+    def test_prepRestartRun(self):
+        """
+        This test is based on the armiRun.yaml case that is loaded during the `setUp`
+        above. In that cs, `reloadDBName` is set to 'reloadingDB.h5', `startCycle` = 1,
+        and `startNode` = 2. The nonexistent 'reloadingDB.h5' must first be
+        created here for this test.
+        """
+        # first successfully call to prepRestartRun
+        o, r = test_reactors.loadTestReactor(TEST_ROOT)
+        cs = o.cs
+        ratedPower = cs["power"]
+        startCycle = cs["startCycle"]
+        startNode = cs["startNode"]
+        cyclesSetting = [
+            {"step days": [1000, 1000], "power fractions": [1, 1]},
+            {"step days": [1000, 1000], "power fractions": [1, 1]},
+            {"step days": [1000, 1000], "power fractions": [1, 1]},
+        ]
+        cycleP, nodeP = getPreviousTimeNode(startCycle, startNode, cs)
+        cyclesSetting[cycleP]["power fractions"][nodeP] = 0.5
+        cs = cs.modified(
+            newSettings={
+                "nCycles": 3,
+                "cycles": cyclesSetting,
+                "reloadDBName": "something_fake.h5",
+            }
+        )
+
+        # create a db based on the cs
+        dbi = database3.DatabaseInterface(r, cs)
+        dbi.initDB(fName="reloadingDB.h5")
+        db = dbi.database
+
+        # populate the db with some things
+        for cycle, node in ((cycle, node) for cycle in range(3) for node in range(2)):
+            r.p.cycle = cycle
+            r.p.timeNode = node
+            r.p.cycleLength = sum(cyclesSetting[cycle]["step days"])
+            r.core.p.power = ratedPower * cyclesSetting[cycle]["power fractions"][node]
+            db.writeToDB(r)
+        db.close()
+
+        self.dbi.prepRestartRun()
+
+        # prove that the reloaded reactor has the correct power
+        self.assertEqual(self.o.r.p.cycle, cycleP)
+        self.assertEqual(self.o.r.p.timeNode, nodeP)
+        self.assertEqual(cyclesSetting[cycleP]["power fractions"][nodeP], 0.5)
+        self.assertEqual(
+            self.o.r.core.p.power,
+            ratedPower * cyclesSetting[cycleP]["power fractions"][nodeP],
+        )
+
+        # now make the cycle histories clash and confirm that an error is thrown
+        cs = cs.modified(
+            newSettings={
+                "cycles": [
+                    {"step days": [666, 666], "power fractions": [1, 1]},
+                    {"step days": [666, 666], "power fractions": [1, 1]},
+                    {"step days": [666, 666], "power fractions": [1, 1]},
+                ],
+            }
+        )
+
+        # create a db based on the cs
+        dbi = database3.DatabaseInterface(r, cs)
+        dbi.initDB(fName="reloadingDB.h5")
+        db = dbi.database
+
+        # populate the db with something
+        for cycle, node in ((cycle, node) for cycle in range(3) for node in range(2)):
+            r.p.cycle = cycle
+            r.p.timeNode = node
+            r.p.cycleLength = 2000
+            db.writeToDB(r)
+        db.close()
+
+        with self.assertRaises(ValueError):
+            self.dbi.prepRestartRun()
+
     def test_computeParents(self):
         # The below arrays represent a tree structure like this:
         #                 71 -----------------------.
@@ -205,6 +327,28 @@ class TestDatabase3(unittest.TestCase):
         # we shouldn't be able to set the fileName if a file is open
         with self.assertRaises(RuntimeError):
             self.db.fileName = "whatever.h5"
+
+    def test_load_updateGlobalAssemNum(self):
+        from armi.reactor import assemblies
+        from armi.reactor.assemblies import resetAssemNumCounter
+
+        self.makeShuffleHistory()
+
+        resetAssemNumCounter()
+        self.assertEqual(assemblies._assemNum, 0)
+
+        # there will 77 assemblies added to the newly created core
+        self.db.load(0, 0, allowMissing=True, updateGlobalAssemNum=False)
+        self.assertEqual(assemblies._assemNum, 85)
+
+        # now do the same call again and show that the global _assemNum just keeps going up
+        self.db.load(0, 0, allowMissing=True, updateGlobalAssemNum=False)
+        self.assertEqual(assemblies._assemNum, 85 * 2)
+
+        # now load but also updateGlobalAssemNum and show that it updates to the value
+        # stored in self.r.p.maxAssemNum plus 1
+        self.db.load(0, 0, allowMissing=True, updateGlobalAssemNum=True)
+        self.assertEqual(assemblies._assemNum, self.r.core.p.maxAssemNum + 1)
 
     def test_history(self):
         self.makeShuffleHistory()
@@ -327,10 +471,10 @@ class TestDatabase3(unittest.TestCase):
         self.db.close()
 
         with h5py.File("test_splitDatabase.h5", "r") as newDb:
-            self.assertTrue(newDb["c00n00/Reactor/cycle"][()] == 0)
-            self.assertTrue(newDb["c00n00/Reactor/cycleLength"][()] == 1)
-            self.assertTrue("c02n00" not in newDb)
-            self.assertTrue(newDb.attrs["databaseVersion"] == database3.DB_VERSION)
+            self.assertEqual(newDb["c00n00/Reactor/cycle"][()], 0)
+            self.assertEqual(newDb["c00n00/Reactor/cycleLength"][()], 1)
+            self.assertNotIn("c02n00", newDb)
+            self.assertEqual(newDb.attrs["databaseVersion"], database3.DB_VERSION)
 
             # validate that the min set of meta data keys exists
             meta_data_keys = [
@@ -353,7 +497,7 @@ class TestDatabase3(unittest.TestCase):
             ]
             for meta_key in meta_data_keys:
                 self.assertIn(meta_key, newDb.attrs)
-                self.assertTrue(newDb.attrs[meta_key] is not None)
+                self.assertIsNotNone(newDb.attrs[meta_key])
 
         # test an edge case - no DB to split
         with self.assertRaises(ValueError):
@@ -401,6 +545,18 @@ class TestDatabase3(unittest.TestCase):
         localHash = database3.Database3.grabLocalCommitHash()
         self.assertEqual(localHash, "thanks")
 
+        # delete the .git directory
+        code = subprocess.run(
+            ["git", "clean", "-f"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        ).returncode
+        self.assertEqual(code, 0)
+        code = subprocess.run(
+            ["git", "clean", "-f", "-d"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode
+        self.assertEqual(code, 0)
+
     def test_fileName(self):
         # test the file name getter
         self.assertEqual(str(self.db.fileName), "test_fileName.h5")
@@ -437,7 +593,7 @@ class TestDatabase3(unittest.TestCase):
     def test_loadCS(self):
         cs = self.db.loadCS()
         self.assertEqual(cs["numProcessors"], 1)
-        self.assertEqual(cs["nCycles"], 3)
+        self.assertEqual(cs["nCycles"], 6)
 
     def test_loadBlueprints(self):
         bp = self.db.loadBlueprints()

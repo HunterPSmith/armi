@@ -25,7 +25,6 @@ from armi.reactor import parameters
 from armi.reactor.flags import Flags
 from armi.reactor.blueprints import componentBlueprint
 from armi.reactor.converters import blockConverters
-from armi.reactor import grids
 from armi.settings.fwSettings import globalSettings
 
 
@@ -47,6 +46,9 @@ class BlockBlueprint(yamlize.KeyedList):
     name = yamlize.Attribute(key="name", type=str)
     gridName = yamlize.Attribute(key="grid name", type=str, default=None)
     flags = yamlize.Attribute(type=str, default=None)
+    axialExpTargetComponent = yamlize.Attribute(
+        key="axial expansion target component", type=str, default=None
+    )
     _geomOptions = _configureGeomOptions()
 
     def _getBlockClass(self, outerComponent):
@@ -159,6 +161,20 @@ class BlockBlueprint(yamlize.KeyedList):
             flags = Flags.fromString(self.flags)
 
         b.setType(self.name, flags)
+
+        if self.axialExpTargetComponent is not None:
+            try:
+                b.setAxialExpTargetComp(components[self.axialExpTargetComponent])
+            except KeyError as noMatchingComponent:
+                raise RuntimeError(
+                    "Block {0} --> axial expansion target component {1} specified in the blueprints does not "
+                    "match any component names. Revise axial expansion target component in blueprints "
+                    "to match the name of a component and retry.".format(
+                        b,
+                        self.axialExpTargetComponent,
+                    )
+                ) from noMatchingComponent
+
         for c in components.values():
             b.add(c)
         b.p.nPins = b.getNumPins()
@@ -168,7 +184,7 @@ class BlockBlueprint(yamlize.KeyedList):
         b.p.height = height
         b.p.heightBOL = height  # for fuel performance
         b.p.xsType = xsType
-        b.setBuLimitInfo(cs)
+        b.setBuLimitInfo()
         b = self._mergeComponents(b)
         b.verifyBlockDims()
         b.spatialGrid = spatialGrid

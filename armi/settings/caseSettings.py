@@ -22,7 +22,7 @@ the environment setup, and hundreds of other things.
 A settings object can be saved as or loaded from an YAML file. The ARMI GUI is designed to
 create this settings file, which is then loaded by an ARMI process on the cluster.
 
-A master case settings is created as ``masterCs``
+A primary case settings is created as ``masterCs``
 
 """
 import io
@@ -39,6 +39,15 @@ from armi.utils.customExceptions import NonexistentSetting
 
 DEP_WARNING = "Deprecation Warning: Settings will not be mutable mid-run: {}"
 
+SIMPLE_CYCLES_INPUTS = {
+    "availabilityFactor",
+    "availabilityFactors",
+    "powerFractions",
+    "burnSteps",
+    "cycleLength",
+    "cycleLengths",
+}
+
 
 class Settings:
     """
@@ -50,7 +59,9 @@ class Settings:
     The settings object has a 1-to-1 correspondence with the ARMI settings input file.
     This file may be created by hand or by the GUI in submitter.py.
 
-    NOTE: The actual settings in any instance of this class are immutable.
+    Notes
+    -----
+    The actual settings in any instance of this class are immutable.
     """
 
     # Settings is not a singleton, but there is a globally
@@ -135,17 +146,51 @@ class Settings:
             self.__class__.__name__, self.caseTitle, total, altered
         )
 
+    def _directAccessOfSettingAllowed(self, key):
+        """
+        A way to check if specific settings can be grabbed out of the case settings.
+
+        Could be updated with other specific instances as necessary.
+
+        Notes
+        -----
+        Checking the validity of grabbing specific settings at this point,
+        as is done for the SIMPLE_CYCLES_INPUT's, feels
+        a bit intrusive and out of place. In particular, the fact that the check
+        is done every time that a setting is reached for, no matter if it is the
+        setting in question, is quite clunky. In the future, it would be desirable
+        if the settings system were more flexible to control this type of thing
+        at a deeper level.
+        """
+        if key not in self.__settings:
+            return False, NonexistentSetting(key)
+
+        if key in SIMPLE_CYCLES_INPUTS and self.__settings["cycles"].value != []:
+            err = ValueError(
+                "Cannot grab simple cycles information from the case settings"
+                " when detailed cycles information is also entered.\n In general"
+                " cycles information should be pulled off the operator or parsed"
+                " using the appropriate getter in the utils."
+            )
+
+            return False, err
+
+        return True, None
+
     def __getitem__(self, key):
-        if key in self.__settings:
+        settingIsOkayToGrab, err = self._directAccessOfSettingAllowed(key)
+        if settingIsOkayToGrab:
             return self.__settings[key].value
         else:
-            raise NonexistentSetting(key)
+            raise err
 
     def getSetting(self, key, default=None):
         """
         Return a copy of an actual Setting object, instead of just its value.
 
-        NOTE: This is used very rarely, try to organize your code to only need a Setting value.
+        Notes
+        -----
+        This is used very rarely, try to organize your code to only need a Setting value.
         """
         if key in self.__settings:
             return copy(self.__settings[key])
@@ -155,7 +200,11 @@ class Settings:
             raise NonexistentSetting(key)
 
     def __setitem__(self, key, val):
-        # TODO: This potentially allows for invisible settings mutations and should be removed.
+        """
+        Notes
+        -----
+        This potentially allows for invisible settings mutations.
+        """
         if key in self.__settings:
             self.__settings[key].setValue(val)
         else:
@@ -231,8 +280,18 @@ class Settings:
         reader, path = self._prepToRead(fName)
         reader.readFromFile(fName, handleInvalids)
         self._applyReadSettings(path if setPath else None)
+        self.registerUserPlugins()
 
         return reader
+
+    def registerUserPlugins(self):
+        """Add any ad-hoc 'user' plugins that are referenced in the settings file."""
+        userPlugins = self["userPlugins"]
+        if len(userPlugins):
+            from armi import getApp  # pylint: disable=import-outside-toplevel
+
+            app = getApp()
+            app.registerUserPlugins(userPlugins)
 
     def _prepToRead(self, fName):
         if self._failOnLoad:
@@ -280,7 +339,9 @@ class Settings:
         """
         Central location to init logging verbosity
 
-        NOTE: This means that creating a Settings object sets the global logging
+        Notes
+        -----
+        This means that creating a Settings object sets the global logging
         level of the entire code base.
         """
         if context.MPI_RANK == 0:
@@ -354,13 +415,15 @@ class Settings:
         """Attempt to grab the module-level logger verbosities from the settings file,
         and then set their log levels (verbosities).
 
-        NOTE: This method is only meant to be called once per run.
-
         Parameters
         ----------
         force : bool, optional
             If force is False, don't overwrite the log verbosities if the logger already exists.
             IF this needs to be used mid-run, force=False is safer.
+
+        Notes
+        -----
+        This method is only meant to be called once per run.
         """
         # try to get the setting dict
         verbs = self["moduleVerbosity"]

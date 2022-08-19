@@ -101,13 +101,13 @@ class TestDatabaseInterface(unittest.TestCase):
         self.td.__exit__(None, None, None)
 
     def test_interactBOL(self):
-        self.assertTrue(self.dbi._db is not None)
+        self.assertIsNotNone(self.dbi._db)
         self.dbi.interactBOL()
 
         self.dbi._db = None
-        self.assertTrue(self.dbi._db is None)
+        self.assertIsNone(self.dbi._db)
         self.dbi.interactBOL()
-        self.assertTrue(self.dbi._db is not None)
+        self.assertIsNotNone(self.dbi._db)
 
     def test_distributable(self):
         self.assertEqual(self.dbi.distributable(), 4)
@@ -245,7 +245,7 @@ class TestDatabaseReading(unittest.TestCase):
         # than the original input file. This allows settings to be
         # changed in memory like this and survive for testing.
         newSettings = {"verbosity": "extra"}
-        newSettings["nCycles"] = 2
+        newSettings["nCycles"] = 3
         newSettings["burnSteps"] = 3
         o, _r = test_reactors.loadTestReactor(customSettings=newSettings)
 

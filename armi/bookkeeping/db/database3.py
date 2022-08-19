@@ -103,6 +103,7 @@ from armi.reactor import grids
 from armi.bookkeeping.db.typedefs import History, Histories
 from armi.bookkeeping.db import database
 from armi.reactor import systemLayoutInput
+from armi.utils import getPreviousTimeNode, getStepLengths
 from armi.utils.textProcessors import resolveMarkupInclusions
 from armi.nucDirectory import nuclideBases
 from armi.settings.fwSettings.databaseSettings import (
@@ -247,7 +248,7 @@ class DatabaseInterface(interfaces.Interface):
         DBs should receive the state information of the run at each node.
         """
         # skip writing for last burn step since it will be written at interact EOC
-        if node < self.cs["burnSteps"]:
+        if node < self.o.burnSteps[cycle]:
             self.r.core.p.minutesSinceStart = (
                 time.time() - self.r.core.timeOfStart
             ) / 60.0
@@ -292,7 +293,7 @@ class DatabaseInterface(interfaces.Interface):
         """
         Reconnect to pre-existing database.
 
-        DB is created and managed by the master node only but we can still connect to it
+        DB is created and managed by the primary node only but we can still connect to it
         from workers to enable things like history tracking.
         """
         if context.MPI_RANK > 0:
@@ -304,29 +305,73 @@ class DatabaseInterface(interfaces.Interface):
     def distributable(self):
         return self.Distribute.SKIP
 
-    def prepRestartRun(self, dbCycle, dbNode):
-        """Load the data history from the database being restarted from."""
+    def prepRestartRun(self):
+        """
+        Load the data history from the database requested in the case setting
+        `reloadDBName`.
+
+        Reactor state is put at the cycle/node requested in the case settings
+        `startCycle` and `startNode`, having loaded the state from all cycles prior
+        to that in the requested database.
+
+        Notes
+        -----
+        Mixing the use of simple vs detailed cycles settings is allowed, provided
+        that the cycle histories prior to `startCycle`/`startNode` are equivalent.
+        """
         reloadDBName = self.cs["reloadDBName"]
         runLog.info(
             f"Merging database history from {reloadDBName} for restart analysis."
         )
+        startCycle = self.cs["startCycle"]
+        startNode = self.cs["startNode"]
+
         with Database3(reloadDBName, "r") as inputDB:
             loadDbCs = inputDB.loadCS()
 
-            # Not beginning or end of cycle so burnSteps matter to get consistent time.
-            isMOC = self.cs["startNode"] not in (0, loadDbCs["burnSteps"])
-            if loadDbCs["burnSteps"] != self.cs["burnSteps"] and isMOC:
-                raise ValueError(
-                    "Time nodes per cycle are inconsistent between loadDB and "
-                    "current case settings. This will create a mismatch in the "
-                    "total time per cycle for the load cycle. Change current case "
-                    "settings to {0} steps per node, or set `startNode` == 0 or {0} "
-                    "so that it loads the BOC or EOC of the load database."
-                    "".format(loadDbCs["burnSteps"])
-                )
+            # pull the history up to the cycle/node prior to `startCycle`/`startNode`
+            dbCycle, dbNode = getPreviousTimeNode(
+                startCycle,
+                startNode,
+                self.cs,
+            )
 
-            self._db.mergeHistory(inputDB, self.cs["startCycle"], self.cs["startNode"])
+            # check that cycle histories are equivalent up to this point
+            self._checkThatCyclesHistoriesAreEquivalentUpToRestartTime(
+                loadDbCs, dbCycle, dbNode
+            )
+
+            self._db.mergeHistory(inputDB, startCycle, startNode)
         self.loadState(dbCycle, dbNode)
+
+    def _checkThatCyclesHistoriesAreEquivalentUpToRestartTime(
+        self, loadDbCs, dbCycle, dbNode
+    ):
+        dbStepLengths = getStepLengths(loadDbCs)
+        currentCaseStepLengths = getStepLengths(self.cs)
+        dbStepHistory = []
+        currentCaseStepHistory = []
+        try:
+            for cycleIdx in range(dbCycle + 1):
+                if cycleIdx == dbCycle:
+                    # truncate it at dbNode
+                    dbStepHistory.append(dbStepLengths[cycleIdx][:dbNode])
+                    currentCaseStepHistory.append(
+                        currentCaseStepLengths[cycleIdx][:dbNode]
+                    )
+                else:
+                    dbStepHistory.append(dbStepLengths[cycleIdx])
+                    currentCaseStepHistory.append(currentCaseStepLengths[cycleIdx])
+        except IndexError:
+            runLog.error(
+                f"DB cannot be loaded to this time: cycle={dbCycle}, node={dbNode}"
+            )
+            raise
+
+        if dbStepHistory != currentCaseStepHistory:
+            raise ValueError(
+                "The cycle history up to the restart cycle/node must be equivalent."
+            )
 
     # TODO: The use of "yield" here is suspect.
     def _getLoadDB(self, fileName):
@@ -378,7 +423,9 @@ class DatabaseInterface(interfaces.Interface):
                         cs=self.cs,
                         bp=self.r.blueprints,
                         allowMissing=True,
+                        updateGlobalAssemNum=updateGlobalAssemNum,
                     )
+                    self.o.reattach(newR, self.cs)
                     break
         else:
             # reactor was never set so fail
@@ -393,11 +440,6 @@ class DatabaseInterface(interfaces.Interface):
                     getH5GroupName(cycle, timeNode, timeStepName)
                 )
             )
-
-        if updateGlobalAssemNum:
-            updateGlobalAssemblyNum(newR)
-
-        self.o.reattach(newR, self.cs)
 
     def getHistory(
         self,
@@ -650,9 +692,7 @@ class Database3(database.Database):
             return unknown
 
     def close(self, completedSuccessfully=False):
-        """
-        Close the DB and perform cleanups and auto-conversions.
-        """
+        """Close the DB and perform cleanups and auto-conversions."""
         self._openCount = 0
         if self.h5db is None:
             return
@@ -1037,7 +1077,14 @@ class Database3(database.Database):
         shutil.copy(self._fullPath, self._fileName)
 
     def load(
-        self, cycle, node, cs=None, bp=None, statePointName=None, allowMissing=False
+        self,
+        cycle,
+        node,
+        cs=None,
+        bp=None,
+        statePointName=None,
+        allowMissing=False,
+        updateGlobalAssemNum=True,
     ):
         """Load a new reactor from (cycle, node).
 
@@ -1062,6 +1109,9 @@ class Database3(database.Database):
         allowMissing : bool
             Whether to emit a warning, rather than crash if reading a database
             with undefined parameters. Default False.
+        updateGlobalAssemNum : bool
+            Whether to update the global assembly number to the value stored in
+            r.core.p.maxAssemNum. Default True.
 
         Returns
         -------
@@ -1097,8 +1147,9 @@ class Database3(database.Database):
         )
         root = comps[0][0]
 
-        # ensure the max assembly number is correct
-        updateGlobalAssemblyNum(root)
+        # ensure the max assembly number is correct, unless the user says no
+        if updateGlobalAssemNum:
+            updateGlobalAssemblyNum(root)
 
         # usually a reactor object
         return root
@@ -1176,7 +1227,7 @@ class Database3(database.Database):
             # We only have a good geom for the main core, so can't do process loading on
             # the SFP, etc.
             if comp.hasFlags(Flags.CORE):
-                comp.processLoading(cs)
+                comp.processLoading(cs, dbLoad=True)
         elif isinstance(comp, Assembly):
             comp.calculateZCoords()
 
@@ -1256,8 +1307,7 @@ class Database3(database.Database):
                 # flatten, store the data offsets and array shapes, and None locations
                 # as attrs
                 # - If not jagged, all top-level ndarrays are the same shape, so it is
-                # probably easier to replace Nones with ndarrays filled with special
-                # values.
+                # easier to replace Nones with ndarrays filled with special values.
                 if parameters.NoDefault in data:
                     data = None
                 else:

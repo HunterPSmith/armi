@@ -20,6 +20,7 @@ import copy
 import math
 import unittest
 
+from armi import nuclearDataIO
 from armi.reactor import components
 from armi.reactor.components import (
     Component,
@@ -45,6 +46,8 @@ from armi.reactor.components import (
     ComponentType,
 )
 from armi.reactor.components import materials
+from armi.reactor.components.component import getReactionRateDict
+from armi.tests import ISOAA_PATH
 from armi.utils import units
 
 
@@ -234,10 +237,11 @@ class TestUnshapedComponent(TestGeneralComponents):
         coldArea = coldComponent.getArea()
 
         self.assertGreater(thermalExpansionFactor, 1)
+        # thermalExpansionFactor accounts for density being 3D while area is 2D
         self.assertAlmostEqual(
-            (coldDensity / hotDensity) / (thermalExpansionFactor * hotArea / coldArea),
-            1,
-        )  # account for density being 3D while area is 2D
+            (coldDensity * coldArea),
+            (thermalExpansionFactor * hotDensity * hotArea),
+        )
 
     def test_getBoundingCircleOuterDiameter(self):
         # a case without thermal expansion
@@ -339,13 +343,14 @@ class TestDerivedShape(TestShapedComponent):
 
 class TestCircle(TestShapedComponent):
     componentCls = Circle
+    _id = 5.0
     _od = 10
     _coldTemp = 25.0
     componentDims = {
         "Tinput": _coldTemp,
         "Thot": 25.0,
         "od": _od,
-        "id": 5.0,
+        "id": _id,
         "mult": 1.5,
     }
 
@@ -384,6 +389,10 @@ class TestCircle(TestShapedComponent):
         cur = self.component.getBoundingCircleOuterDiameter(cold=True)
         self.assertAlmostEqual(ref, cur)
 
+    def test_getCircleInnerDiameter(self):
+        cur = self.component.getCircleInnerDiameter(cold=True)
+        self.assertAlmostEqual(self._id, cur)
+
     def test_dimensionThermallyExpands(self):
         expandedDims = ["od", "id", "mult"]
         ref = [True, True, False]
@@ -421,6 +430,24 @@ class TestCircle(TestShapedComponent):
         ref = mult * math.pi * ((od / 2.0) ** 2 - (idd / 2.0) ** 2)
         cur = gap.getArea()
         self.assertAlmostEqual(cur, ref)
+
+    def test_badComponentName(self):
+        """This shows that resolveLinkedDims cannot support names with periods in them"""
+        nPins = 12
+        fuelDims = {"Tinput": 25.0, "Thot": 430.0, "od": 0.9, "id": 0.0, "mult": nPins}
+        cladDims = {"Tinput": 25.0, "Thot": 430.0, "od": 1.1, "id": 1.0, "mult": nPins}
+        fuel = Circle("fuel", "UZr", **fuelDims)
+        clad = Circle("clad_4.2.3", "HT9", **cladDims)
+        gapDims = {
+            "Tinput": 25.0,
+            "Thot": 430.0,
+            "od": "clad_4.2.3.id",
+            "id": "fuel.od",
+            "mult": nPins,
+        }
+        gapDims["components"] = {"clad_4.2.3": clad, "fuel": fuel}
+        with self.assertRaises(ValueError):
+            _gap = Circle("gap", "Void", **gapDims)
 
     def test_componentInteractionsLinkingBySubtraction(self):
         r"""Tests linking of components by subtraction."""
@@ -467,6 +494,174 @@ class TestCircle(TestShapedComponent):
         self.assertEqual(self.component.getNumberDensity("NA23"), 1.0)
         self.component.changeNDensByFactor(3.0)
         self.assertEqual(self.component.getNumberDensity("NA23"), 3.0)
+
+
+class TestComponentExpansion(unittest.TestCase):
+    # when comparing to 3D density, the comparison is not quite correct.
+    # We need a bigger delta, this will be investigated/fixed in another PR
+    biggerDelta = 0.01  # g/cc
+    tWarm = 50
+    tHot = 500
+
+    def test_ExpansionConservationHotHeightDefined(self):
+        """
+        Demonstrate tutorial for how to expand and relation ships conserved at during expansion.
+
+        Notes
+        -----
+        - height taken as hot height and show how quantity is conserved with
+          inputHeightsConsideredHot = True (the default)
+        """
+        hotHeight = 1.0
+        coldOuterDiameter = 1.0
+        circle1 = Circle("circle", "HT9", 20, self.tWarm, coldOuterDiameter)
+        circle2 = Circle("circle", "HT9", 20, self.tHot, coldOuterDiameter)
+
+        # mass density is proportional to Fe number density and derived from
+        # all the number densities and atomic masses
+        self.assertAlmostEqual(
+            circle1.p.numberDensities["FE"] / circle2.p.numberDensities["FE"],
+            circle1.getMassDensity() / circle2.getMassDensity(),
+        )
+
+        # the colder one has more because it is the same cold outer diameter
+        # but it would be taller at the same temperature
+        mass1 = circle1.getMassDensity() * circle1.getArea() * hotHeight
+        mass2 = circle2.getMassDensity() * circle2.getArea() * hotHeight
+        self.assertGreater(mass1, mass2)
+
+        # they are off by factor of thermal exp
+        self.assertAlmostEqual(
+            mass1 * circle1.getThermalExpansionFactor(),
+            mass2 * circle2.getThermalExpansionFactor(),
+        )
+
+        # material.density is the 2D density of a material
+        # material.density3 is true density and not equal in this case
+        # density must be density by calling applyHotHeightDensityReduction
+        # or other methods (see rest of test).
+        for circle in [circle1, circle2]:
+            # 2D density is not equal after application of applyHotHeightDensityReduction
+            # which happens during construction
+            self.assertNotAlmostEqual(
+                circle.getMassDensity(),
+                circle.material.density(Tc=circle.temperatureInC),
+            )
+            # 2D density is off by the thermal exp factor
+            self.assertAlmostEqual(
+                circle.getMassDensity() * circle.getThermalExpansionFactor(),
+                circle.material.density(Tc=circle.temperatureInC),
+            )
+            self.assertAlmostEqual(
+                circle.getMassDensity(),
+                circle.material.density3(Tc=circle.temperatureInC),
+                delta=self.biggerDelta,
+            )
+        # Change temp forward and backward and show equal
+        oldArea = circle1.getArea()
+        initialDens = circle1.getMassDensity()
+        # this math is done in applyHotHeightDensityReduction
+        applyHotHeightDensityReductionFactor = (
+            1.0
+            + circle1.material.linearExpansionFactor(
+                circle1.temperatureInC, circle1.inputTemperatureInC
+            )
+        )
+        factorToUndoHotHeight = circle1.getThermalExpansionFactor()
+        self.assertAlmostEqual(
+            applyHotHeightDensityReductionFactor,
+            factorToUndoHotHeight,
+        )
+        # when block.setHeight is called (which effectively changes component height)
+        # component.setNumberDensity is called (for solid isotopes) to adjust the number
+        # density so that now the 2D expansion will be approximated/expanded around
+        # the hot temp which is akin to these adjustments
+
+        # undo the old applyHotHeightDensityReduction
+        circle1.changeNDensByFactor(factorToUndoHotHeight)
+        circle1.setTemperature(self.tHot)
+        circle1.applyHotHeightDensityReduction()  # apply at new temp
+
+        # now its density is same as hot component
+        self.assertAlmostEqual(
+            circle1.getMassDensity(),
+            circle2.getMassDensity(),
+        )
+
+        # show that mass is conserved after expansion
+        circle1NewHotHeight = (
+            hotHeight * circle1.getThermalExpansionFactor() / factorToUndoHotHeight
+        )
+        self.assertAlmostEqual(
+            mass1, circle1.getMassDensity() * circle1.getArea() * circle1NewHotHeight
+        )
+        # you can calculate the height exp factor directly this way
+        self.assertAlmostEqual(
+            circle1.getThermalExpansionFactor() / factorToUndoHotHeight,
+            circle1.getThermalExpansionFactor(Tc=circle1.temperatureInC, T0=self.tWarm),
+        )
+
+        self.assertAlmostEqual(
+            circle1.getMassDensity(),
+            circle1.material.density3(Tc=circle2.temperatureInC),
+            delta=self.biggerDelta,
+        )
+        # change back to old temp
+        circle1.changeNDensByFactor(circle1.getThermalExpansionFactor())
+        circle1.setTemperature(self.tWarm)
+        circle1.applyHotHeightDensityReduction()
+
+        # check for consistency
+        self.assertAlmostEqual(initialDens, circle1.getMassDensity())
+        self.assertAlmostEqual(oldArea, circle1.getArea())
+        self.assertAlmostEqual(
+            mass1, circle1.getMassDensity() * circle1.getArea() * hotHeight
+        )
+
+    def test_ExpansionConservationColdHeightDefined(self):
+        """
+        Demonstrate that material is conserved at during expansion
+
+        Notes
+        -----
+        - height taken as cold height and show how quantity is conserved with
+          inputHeightsConsideredHot = False
+        """
+        coldHeight = 1.0
+        circle1 = Circle("circle", "HT9", 20, self.tWarm, 1.0)
+        circle2 = Circle("circle", "HT9", 20, self.tHot, 1.0)
+        # same as 1 but we will make like 2
+        circle1AdjustTo2 = Circle("circle", "HT9", 20, self.tWarm, 1.0)
+
+        # make it hot like 2
+        circle1AdjustTo2.changeNDensByFactor(
+            circle1AdjustTo2.getThermalExpansionFactor()
+        )
+        circle1AdjustTo2.setTemperature(self.tHot)
+        circle1AdjustTo2.applyHotHeightDensityReduction()
+        # check that its like 2
+        self.assertAlmostEqual(
+            circle2.getMassDensity(), circle1AdjustTo2.getMassDensity()
+        )
+        self.assertAlmostEqual(circle2.getArea(), circle1AdjustTo2.getArea())
+
+        for circle in [circle1, circle2, circle1AdjustTo2]:
+
+            self.assertAlmostEqual(
+                circle.getMassDensity(),
+                circle.material.density3(Tc=circle.temperatureInC),
+                delta=self.biggerDelta,
+            )
+            # total mass consistent between hot and cold
+            # Hot height will be taller
+            hotHeight = coldHeight * circle.getThermalExpansionFactor()
+            self.assertAlmostEqual(
+                coldHeight
+                * circle.getArea(cold=True)
+                * circle.material.density3(Tc=circle.inputTemperatureInC),
+                hotHeight * circle.getArea() * circle.getMassDensity(),
+                delta=self.biggerDelta,
+            )
 
 
 class TestTriangle(TestShapedComponent):
@@ -540,6 +735,10 @@ class TestRectangle(TestShapedComponent):
         ref = math.sqrt(61.0)
         cur = self.component.getBoundingCircleOuterDiameter(cold=True)
         self.assertAlmostEqual(ref, cur)
+
+    def test_getCircleInnerDiameter(self):
+        cur = self.component.getCircleInnerDiameter(cold=True)
+        self.assertAlmostEqual(math.sqrt(25.0), cur)
 
     def test_getArea(self):
         outerL = self.component.getDimension("lengthOuter")
@@ -647,6 +846,11 @@ class TestSquare(TestShapedComponent):
         cur = self.component.getBoundingCircleOuterDiameter(cold=True)
         self.assertAlmostEqual(ref, cur)
 
+    def test_getCircleInnerDiameter(self):
+        ref = math.sqrt(8.0)
+        cur = self.component.getCircleInnerDiameter(cold=True)
+        self.assertAlmostEqual(ref, cur)
+
     def test_getArea(self):
         outerW = self.component.getDimension("widthOuter")
         innerW = self.component.getDimension("widthInner")
@@ -746,6 +950,11 @@ class TestHexagon(TestShapedComponent):
         cur = self.component.getBoundingCircleOuterDiameter(cold=True)
         self.assertAlmostEqual(ref, cur)
 
+    def test_getCircleInnerDiameter(self):
+        ref = 2.0 * 5.0 / math.sqrt(3)
+        cur = self.component.getCircleInnerDiameter(cold=True)
+        self.assertAlmostEqual(ref, cur)
+
     def test_getArea(self):
         cur = self.component.getArea()
         mult = self.component.getDimension("mult")
@@ -786,6 +995,26 @@ class TestHoledHexagon(TestShapedComponent):
         ref = 2.0 * 16.5 / math.sqrt(3)
         cur = self.component.getBoundingCircleOuterDiameter(cold=True)
         self.assertAlmostEqual(ref, cur)
+
+    def test_getCircleInnerDiameter(self):
+        ref = 0  # there are multiple holes, so the function should return 0
+        cur = self.component.getCircleInnerDiameter(cold=True)
+        self.assertEqual(ref, cur)
+
+        # make and test another one with just 1 hole
+        simpleHoledHexagon = HoledHexagon(
+            "hex",
+            "Void",
+            self.componentDims["Tinput"],
+            self.componentDims["Thot"],
+            self.componentDims["op"],
+            self.componentDims["holeOD"],
+            nHoles=1,
+        )
+        self.assertEqual(
+            self.componentDims["holeOD"],
+            simpleHoledHexagon.getCircleInnerDiameter(cold=True),
+        )
 
     def test_getArea(self):
         op = self.component.getDimension("op")
@@ -845,6 +1074,11 @@ class TestHoledRectangle(TestShapedComponent):
         cur = self.component.getBoundingCircleOuterDiameter()
         self.assertAlmostEqual(ref, cur)
 
+    def test_getCircleInnerDiameter(self):
+        ref = self.componentDims["holeOD"]
+        cur = self.component.getCircleInnerDiameter(cold=True)
+        self.assertEqual(ref, cur)
+
     def test_getArea(self):
         rectArea = self.length * self.width
         odHole = self.component.getDimension("holeOD")
@@ -886,6 +1120,11 @@ class TestHoledSquare(TestHoledRectangle):
     def test_thermallyExpands(self):
         self.assertTrue(self.component.THERMAL_EXPANSION_DIMS)
 
+    def test_getCircleInnerDiameter(self):
+        ref = self.componentDims["holeOD"]
+        cur = self.component.getCircleInnerDiameter(cold=True)
+        self.assertEqual(ref, cur)
+
 
 class TestHelix(TestShapedComponent):
     componentCls = Helix
@@ -899,9 +1138,14 @@ class TestHelix(TestShapedComponent):
         "id": 0.1,
     }
 
-    def test_getBoundingCircleOuterDiameter(self, Tc=None, cold=False):
-        ref = 0.25 + 2.0
+    def test_getBoundingCircleOuterDiameter(self):
+        ref = 2.0 + 0.25
         cur = self.component.getBoundingCircleOuterDiameter(cold=True)
+        self.assertAlmostEqual(ref, cur)
+
+    def test_getCircleInnerDiameter(self):
+        ref = 2.0 - 0.25
+        cur = self.component.getCircleInnerDiameter(cold=True)
         self.assertAlmostEqual(ref, cur)
 
     def test_getArea(self):
@@ -1173,6 +1417,15 @@ class TestMaterialAdjustments(unittest.TestCase):
     def test_getEnrichment(self):
         self.fuel.adjustMassEnrichment(0.3)
         self.assertAlmostEqual(self.fuel.getEnrichment(), 0.3)
+
+
+class TestGetReactionRateDict(unittest.TestCase):
+    def test_getReactionRateDict(self):
+        lib = nuclearDataIO.isotxs.readBinary(ISOAA_PATH)
+        rxRatesDict = getReactionRateDict(
+            nucName="PU239", lib=lib, xsType="A", mgFlux=1, nDens=1
+        )
+        self.assertEqual(rxRatesDict["nG"], sum(lib["PU39AA"].micros.nGamma))
 
 
 if __name__ == "__main__":

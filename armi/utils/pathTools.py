@@ -100,40 +100,12 @@ def isAccessible(path):
     path : str
         a directory or file
     """
-    if os.path.exists(path):
-        # This can potentially return a false positive in Python 2 if the path
-        # exists but the user does not have access. As a workaround, we attempt
-        # to list the contents of the containing directory, which will throw an
-        # OSError if the user doesn't have access.
-        try:
-            if not os.path.isdir(path):
-                path = os.path.dirname(path)
-            os.listdir(path)
-            return True
-        except OSError:
-            return False
-    else:
-        return False
-
-
-def getModAndClassFromPath(path):
-    """
-    Return the path to the module specified and the name of the class in the module.
-
-    Raises
-    ------
-    ValueError:
-        If the path does not exist or
-
-
-    """
-    pass
+    return os.path.exists(path)
 
 
 def separateModuleAndAttribute(pathAttr):
     """
     Return True of the specified python module, and attribute of the module exist.
-
 
     Parameters
     ----------
@@ -219,7 +191,7 @@ def moduleAndAttributeExist(pathAttr):
     return moduleAttributeName in userSpecifiedModule.__dict__
 
 
-def cleanPath(path):
+def cleanPath(path, mpiRank=0):
     """Recursively delete a path.
 
     !!! careful with this !!! It can delete the entire cluster.
@@ -237,7 +209,6 @@ def cleanPath(path):
     -------
     success : bool
         True if file was deleted. False if it was not.
-
     """
     valid = False
     if not os.path.exists(path):
@@ -263,23 +234,23 @@ def cleanPath(path):
             "You tried to delete {0}, but it does not seem safe to do so.".format(path)
         )
 
-    for i in range(3):
-        try:
-            if os.path.exists(path) and os.path.isdir(path):
-                shutil.rmtree(path)
-            elif not os.path.isdir(path):
-                # it's just a file. Delete it.
-                os.remove(path)
-        except:
-            if i == 2:
-                pass
-            # in case the OS is behind or something
-            sleep(0.1)
+    # delete the file/directory from only one process
+    if context.MPI_RANK == mpiRank:
+        if os.path.exists(path) and os.path.isdir(path):
+            shutil.rmtree(path)
+        elif not os.path.isdir(path):
+            # it's just a file. Delete it.
+            os.remove(path)
 
-        sleep(0.3)
-        if not os.path.exists(path):
+    # Potentially, wait for the deletion to finish.
+    maxLoops = 6
+    waitTime = 0.5
+    loopCounter = 0
+    while os.path.exists(path):
+        loopCounter += 1
+        if loopCounter > maxLoops:
             break
-        sleep(0.3)
+        sleep(waitTime)
 
     if os.path.exists(path):
         return False

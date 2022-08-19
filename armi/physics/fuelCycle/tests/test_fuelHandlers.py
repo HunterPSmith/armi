@@ -25,19 +25,13 @@ import unittest
 
 import numpy as np
 
-from armi.physics.fuelCycle import fuelHandlers
-from armi.physics.fuelCycle import settings
-from armi.reactor import assemblies
-from armi.reactor import blocks
-from armi.reactor import components
-from armi.reactor.tests import test_reactors
-from armi.tests import TEST_ROOT
-from armi.utils import directoryChangers
-from armi.reactor import grids
+from armi.physics.fuelCycle import fuelHandlers, settings
+from armi.reactor import assemblies, blocks, components, grids
 from armi.reactor.flags import Flags
-from armi.tests import ArmiTestHelper
+from armi.reactor.tests import test_reactors
 from armi.settings import caseSettings
-from armi.physics import fuelCycle
+from armi.tests import ArmiTestHelper, TEST_ROOT
+from armi.utils import directoryChangers
 
 
 class TestFuelHandler(ArmiTestHelper):
@@ -60,8 +54,10 @@ class TestFuelHandler(ArmiTestHelper):
         but none of these have any number densities.
         """
         self.o, self.r = test_reactors.loadTestReactor(
-            self.directoryChanger.destination
+            self.directoryChanger.destination,
+            customSettings={"nCycles": 3, "trackAssems": True},
         )
+
         blockList = self.r.core.getBlocks()
         for bi, b in enumerate(blockList):
             b.p.flux = 5e10
@@ -324,6 +320,7 @@ class TestFuelHandler(ArmiTestHelper):
     def runShuffling(self, fh):
         """Shuffle fuel and write out a SHUFFLES.txt file."""
         fh.attachReactor(self.o, self.r)
+
         # so we don't overwrite the version-controlled armiRun-SHUFFLES.txt
         self.o.cs.caseTitle = "armiRun2"
         fh.interactBOL()
@@ -483,8 +480,8 @@ class TestFuelHandler(ArmiTestHelper):
         self.assertEqual(b.getRotationNum(), rotNum + 2)
 
     def test_linPowByPin(self):
-        fh = fuelHandlers.FuelHandler(self.o)
-        hist = self.o.getInterface("history")
+        _fh = fuelHandlers.FuelHandler(self.o)
+        _hist = self.o.getInterface("history")
         newSettings = {"assemblyRotationStationary": True}
         self.o.cs = self.o.cs.modified(newSettings=newSettings)
         assem = self.o.r.core.getFirstAssembly(Flags.FUEL)
@@ -497,8 +494,8 @@ class TestFuelHandler(ArmiTestHelper):
         self.assertEqual(type(b.p.linPowByPin), np.ndarray)
 
     def test_linPowByPinNeutron(self):
-        fh = fuelHandlers.FuelHandler(self.o)
-        hist = self.o.getInterface("history")
+        _fh = fuelHandlers.FuelHandler(self.o)
+        _hist = self.o.getInterface("history")
         newSettings = {"assemblyRotationStationary": True}
         self.o.cs = self.o.cs.modified(newSettings=newSettings)
         assem = self.o.r.core.getFirstAssembly(Flags.FUEL)
@@ -511,8 +508,8 @@ class TestFuelHandler(ArmiTestHelper):
         self.assertEqual(type(b.p.linPowByPinNeutron), np.ndarray)
 
     def test_linPowByPinGamma(self):
-        fh = fuelHandlers.FuelHandler(self.o)
-        hist = self.o.getInterface("history")
+        _fh = fuelHandlers.FuelHandler(self.o)
+        _hist = self.o.getInterface("history")
         newSettings = {"assemblyRotationStationary": True}
         self.o.cs = self.o.cs.modified(newSettings=newSettings)
         assem = self.o.r.core.getFirstAssembly(Flags.FUEL)
@@ -548,6 +545,7 @@ class TestFuelHandler(ArmiTestHelper):
         fh = fuelHandlers.FuelHandler(self.o)
 
         # simple divergent
+
         schedule = fuelHandlers.shuffleStructure.translationFunctions.buildRingSchedule(
             fh, 1, 9, diverging=True
         )
@@ -557,10 +555,12 @@ class TestFuelHandler(ArmiTestHelper):
         schedule = fuelHandlers.shuffleStructure.translationFunctions.buildRingSchedule(
             fh, 1, 9, jumpRingFrom=6
         )
+
         self.assertEqual(schedule, [[5], [4], [3], [2], [1], [6], [7], [8], [9]])
 
         # crash on invalid jumpring
         with self.assertRaises(RuntimeError):
+
             schedule = (
                 fuelHandlers.shuffleStructure.translationFunctions.buildRingSchedule(
                     fh, 1, 17, jumpRingFrom=0
@@ -570,11 +570,13 @@ class TestFuelHandler(ArmiTestHelper):
         # test 4: Mid way jumping
         schedule = fuelHandlers.shuffleStructure.translationFunctions.buildRingSchedule(
             fh, 1, 9, jumpRingTo=6, jumpRingFrom=3, diverging=True
+
         )
         self.assertEqual(schedule, [[9], [8], [7], [4], [5], [6], [3], [2], [1]])
 
     def test_buildConvergentRingSchedule(self):
         fh = fuelHandlers.FuelHandler(self.o)
+
         schedule = fuelHandlers.shuffleStructure.translationFunctions.buildConvergentRingSchedule(
             fh, 1, 9
         )
@@ -697,173 +699,99 @@ class TestFuelHandler(ArmiTestHelper):
                 assy, newEnrich
             )
 
-    # def test_buildEqRingSchedule(self):
-    #    fh = fuelHandlers.FuelHandler(self.o)
-    #    locSchedule = fh.buildEqRingSchedule([2, 1])
-    #    self.assertEqual(locSchedule, ["002-001", "002-002", "001-001"])
 
-    def test_swapFluxParamSameLength(self):
-        """
-        Test the _swapFluxParams method for the usual case,
-        where each of the input assembles have the same number of assemblies,
-        on the same mesh
-        """
-        # grab the assemblies
-        assems = self.r.core.getAssemblies(Flags.FEED)
-        self.assertEqual(len(assems), 14)
 
-        for a in assems:
-            self.assertEqual(len(a.getBlocks()), 5)
 
-        # make two copies of an arbitraty assembly
-        a1 = copy.deepcopy(list(assems)[1])
-        a2 = copy.deepcopy(list(assems)[1])
-        blocks1 = list(a1.getBlocks())
-        blocks2 = list(a2.getBlocks())
-        self.assertEqual(len(blocks1), 5)
-        self.assertEqual(len(blocks2), 5)
-        self.assertEqual(blocks1[3].p.height, 25)
-        self.assertEqual(blocks2[3].p.height, 25)
-
-        # 1. alter the values of a single block in assembly 2
-        b2 = list(blocks2)[1]
-        b2.p.flux = b2.p.flux * 2
-        b2.p.power = 1000
-        b2.p.pdens = b2.p.power / b2.getVolume()
-
-        # grab the power before the swap
-        power1 = sum([b.p.power for b in a1.getBlocks()])
-        power2 = sum([b.p.power for b in a2.getBlocks()])
-
-        # 2. validate the situation is as you'd expect
-        self.assertEqual(list(a1.getBlocks())[1].p.flux, 50000000000.0)
-        self.assertEqual(list(a2.getBlocks())[1].p.flux, 100000000000.0)
-        self.assertEqual(list(a1.getBlocks())[1].p.power, 0.0)
-        self.assertEqual(list(a2.getBlocks())[1].p.power, 1000.0)
-        self.assertEqual(list(a1.getBlocks())[1].p.pdens, 0.0)
-        self.assertGreater(list(a2.getBlocks())[1].p.pdens, 0.0)
-
-        # 3. do the swap
+    def test_getBatchZoneAssembliesFromLocation(self):
         fh = fuelHandlers.FuelHandler(self.o)
-        fh._swapFluxParam(a1, a2)
+        assemblies = fh.translationFunctions.getBatchZoneAssembliesFromLocation(
+            fh,
+            [
+                [
+                    "002-001",
+                    "002-002",
+                ],
+                ["001-001"],
+            ],
+        )
+        self.assertEqual(
+            [[assy.getLocation() for assy in assyList] for assyList in assemblies],
+            [
+                [
+                    "002-001",
+                    "002-002",
+                ],
+                ["001-001"],
+            ],
+        )
 
-        # 4. validate the swap worked
-        self.assertEqual(list(a1.getBlocks())[1].p.flux, 100000000000.0)
-        self.assertEqual(list(a2.getBlocks())[1].p.flux, 50000000000.0)
-        self.assertEqual(list(a1.getBlocks())[1].p.power, 1000.0)
-        self.assertEqual(list(a2.getBlocks())[1].p.power, 0.0)
-        self.assertGreater(list(a1.getBlocks())[1].p.pdens, 0.0)
-        self.assertEqual(list(a2.getBlocks())[1].p.pdens, 0.0)
-        self.assertEqual(sum([b.p.power for b in a1.getBlocks()]), power2)
-        self.assertEqual(sum([b.p.power for b in a2.getBlocks()]), power1)
-
-    def test_swapFluxParamDifferentLengths(self):
-        """
-        Test the _swapFluxParams method for the less common, and more complicated case,
-        where the input assembles have different numbers of blocks, potentially on
-        wildly different point meshes.
-        """
-        # grab the assemblies
-        assems = self.r.core.getAssemblies(Flags.FEED)
-
-        # make two copies of an arbitraty assembly
-        a1 = copy.deepcopy(list(assems)[1])
-        a2 = copy.deepcopy(list(assems)[1])
-        height2 = 25.0
-        self.assertEqual(list(a1.getBlocks())[3].p.height, height2)
-        self.assertEqual(list(a2.getBlocks())[3].p.height, height2)
-
-        # grab the blocks from the second assembly
-        blocks2 = list(a2.getBlocks())
-        self.assertEqual(len(blocks2), 5)
-
-        # grab a single block from the second assembly, to be altered
-        b2 = list(blocks2)[1]
-        self.assertEqual(b2.p.height, height2)
-        self.assertEqual(b2.p.flux, 50000000000.0)
-        self.assertIsNone(b2.p.mgFlux)
-        self.assertEqual(b2.p.power, 0.0)
-        self.assertEqual(b2.p.pdens, 0.0)
-        volume2 = 6074.356
-        self.assertAlmostEqual(b2.getVolume(), volume2, delta=0.1)
-
-        # split the the block into two of half the heights
-        b20 = copy.deepcopy(b2)
-        b21 = copy.deepcopy(b2)
-        b20.setHeight(height2 / 2)
-        b21.setHeight(height2 / 2)
-        self.assertAlmostEqual(b20.getVolume(), volume2 / 2, delta=0.1)
-        self.assertAlmostEqual(b21.getVolume(), volume2 / 2, delta=0.1)
-
-        # give the two new (smaller) blocks some power/pdens
-        b20.p.power = 1000
-        b21.p.power = 2000
-        b20.p.pdens = b20.p.power / b20.getVolume()
-        b21.p.pdens = b21.p.power / b21.getVolume()
-        self.assertEqual(b20.p.power, 1000.0)
-        self.assertEqual(b21.p.power, 2000.0)
-        self.assertAlmostEqual(b20.p.pdens, 0.3292, delta=0.1)
-        self.assertAlmostEqual(b21.p.pdens, 0.6585, delta=0.1)
-
-        # give the second assembly the new blocks
-        a2.removeAll()
-        a2.setChildren([blocks2[0]] + [b20, b21] + blocks2[2:])
-
-        # validate the situation is as you'd expect
-        self.assertEqual(len(a1.getBlocks()), 5)
-        self.assertEqual(len(a2.getBlocks()), 6)
-
-        # validate the power before the swap
-        power1 = [b.p.power for b in a1.getBlocks()]
-        power2 = [b.p.power for b in a2.getBlocks()]
-
-        self.assertEqual(power1, [0, 0, 0, 0, 0])
-        self.assertEqual(power2, [0, 1000, 2000, 0, 0, 0])
-
-        # validate the power density before the swap
-        for b in a1.getBlocks():
-            self.assertEqual(b.p.pdens, 0.0)
-
-        pdens2i = [0, 0.32925299379047496, 0.6585059875809499, 0, 0, 0]
-        for i, b in enumerate(a2.getBlocks()):
-            self.assertAlmostEqual(b.p.pdens, pdens2i[i], msg=i)
-
-        # validate the flux before the swap
-        for b in a1.getBlocks():
-            self.assertEqual(b.p.flux, 50000000000.0)
-
-        for b in a2.getBlocks():
-            self.assertEqual(b.p.flux, 50000000000.0)
-
-        # do the swap, using averages
+    def test_getCascadesFromLocations(self):
         fh = fuelHandlers.FuelHandler(self.o)
-        fh._swapFluxParam(a1, a2)
+        locations = [
+            [
+                "002-001",
+                "002-002",
+            ],
+            ["001-001"],
+        ]
+        assemblies = fh.translationFunctions.getCascadesFromLocations(fh, locations)
+        self.assertEqual(
+            [[assy.getLocation() for assy in assyList] for assyList in assemblies],
+            locations,
+        )
 
-        # grab the power after the swap
-        power1f = [b.p.power for b in a1.getBlocks()]
-        power2f = [b.p.power for b in a2.getBlocks()]
+    def test_buildBatchCascades(self):
+        fh = fuelHandlers.FuelHandler(self.o)
+        schedule = fh.translationFunctions.buildRingSchedule(
+            self, 1, 2, diverging=False
+        )
+        assemblies = fh.translationFunctions.getRingAssemblies(fh, schedule)
+        batchCascade = fh.translationFunctions.buildBatchCascades(assemblies)
+        self.assertEqual(
+            batchCascade,
+            fh.translationFunctions.getCascadesFromLocations(
+                fh, [["002-002"], ["001-001", "002-001"]]
+            ),
+        )
 
-        # validate the swap worked
-        self.assertEqual(len(a1.getBlocks()), 5)
-        self.assertEqual(len(a2.getBlocks()), 6)
+    def test_changeBlockLevelEnrichment(self):
+        fh = fuelHandlers.FuelHandler(self.o)
+        assy = self.r.core.getAssemblies(Flags.FEED)[0]
 
-        self.assertEqual(power1f, [0, 3000, 0, 0, 0])
-        self.assertEqual(power2f, [0, 0, 0, 0, 0, 0])
+        # Test single enrichment
+        newEnrich = 0.16
+        fh.translationFunctions.changeBlockLevelEnrichment(assy, newEnrich)
+        for block in assy.getBlocks(Flags.FUEL):
+            self.assertAlmostEqual(block.getFissileMassEnrich(), 0.16, delta=1e-6)
 
-        # validate the power density after the swap
-        pdens1f = [0, 0.4938794906857124, 0, 0, 0]
-        for i, b in enumerate(a1.getBlocks()):
-            self.assertAlmostEqual(b.p.pdens, pdens1f[i], msg=i)
+        # Test enrichment list
+        newEnrich = [0.12, 0.14, 0.16]
+        fh.translationFunctions.changeBlockLevelEnrichment(assy, newEnrich)
+        for index, block in enumerate(assy.getBlocks(Flags.FUEL)):
+            self.assertAlmostEqual(
+                block.getFissileMassEnrich(), newEnrich[index], delta=1e-6
+            )
 
-        for i, b in enumerate(a2.getBlocks()):
-            self.assertAlmostEqual(b.p.pdens, 0, msg=i)
+        # Test invalid enrichment list length and invalid enrichment value
+        newEnrich = [0.12, 0.14, 0.16, 0.15]
+        with self.assertRaises(RuntimeError):
+            fh.translationFunctions.changeBlockLevelEnrichment(assy, newEnrich)
+        newEnrich = "a"
+        with self.assertRaises(RuntimeError):
+            fh.translationFunctions.changeBlockLevelEnrichment(assy, newEnrich)
 
-        # validate the flux after the swap
-        for b in a1.getBlocks():
-            self.assertEqual(b.p.flux, 50000000000.0)
+    def test_buildEqRingSchedule(self):
+        fh = fuelHandlers.FuelHandler(self.o)
+        locSchedule = fh.buildEqRingSchedule([2, 1])
+        self.assertEqual(locSchedule, ["002-001", "002-002", "001-001"])
 
-        for b in a2.getBlocks():
-            self.assertEqual(b.p.flux, 50000000000.0)
+        fh.cs["circularRingOrder"] = "distanceSmart"
+        locSchedule = fh.buildEqRingSchedule([2, 1])
+        self.assertEqual(locSchedule, ["002-001", "002-002", "001-001"])
+
+        fh.cs["circularRingOrder"] = "somethingCrazy"
+        locSchedule = fh.buildEqRingSchedule([2, 1])
+        self.assertEqual(locSchedule, ["002-001", "002-002", "001-001"])
 
     def test_transferStationaryBlocks(self):
         """
@@ -983,6 +911,7 @@ class TestFuelHandler(ArmiTestHelper):
         # try to swap stationary blocks between assembly 1 and 2
         with self.assertRaises(ValueError):
             fh._transferStationaryBlocks(a1, a2)
+
 
     def test_swapCascade(self):
         """
@@ -1160,6 +1089,7 @@ class TestFuelHandler(ArmiTestHelper):
                 a1StationaryBlocks, oldA1Location, a2StationaryBlocks, oldA2Location
             )
 
+
     def test_checkTranslations(self):
         """
         Test the checkTranslations method.
@@ -1182,6 +1112,7 @@ class TestFuelHandler(ArmiTestHelper):
         ss.translations[0].append("String")
         with self.assertRaises(ValueError):
             ss.checkTranslations()
+
 
     def test_validateLocations(self):
         """

@@ -29,6 +29,7 @@ import math
 import os
 import re
 import warnings
+
 import numpy
 
 
@@ -38,6 +39,7 @@ from armi.physics.fuelCycle import shuffleStructure
 from armi.physics.fuelCycle import rotationFunctions
 from armi.utils.mathematics import resampleStepwise
 from armi import runLog
+
 
 
 class FuelHandler:
@@ -52,6 +54,9 @@ class FuelHandler:
     To use this, simply create an input Python file and point to it by path
     with the ``fuelHandler`` setting. In that file, subclass this object.
     """
+
+    # Import functions
+    from armi.physics.fuelCycle import translationFunctions
 
     def __init__(self, operator):
         # we need access to the operator to find the core, get settings, grab
@@ -92,6 +97,7 @@ class FuelHandler:
     def preoutage(self):
         self.prepCore()
         self.prepShuffleMap()
+
 
     def outage(self, factor=1.0):
         r"""
@@ -700,6 +706,250 @@ class FuelHandler:
 
         return assemblyList
 
+
+    def buildRingSchedule(
+        self,
+        chargeRing=None,
+        dischargeRing=None,
+        jumpRingFrom=None,
+        jumpRingTo=None,
+        coarseFactor=0.0,
+    ):
+        r"""
+        Build a ring schedule for shuffling.
+
+        Notes
+        -----
+        General enough to do convergent, divergent, or any combo, plus jumprings.
+
+        The center of the core is ring 1, based on the DIF3D numbering scheme.
+
+        Jump ring behavior can be generalized by first building a base ring list
+        where assemblies get charged to H and discharge from A::
+
+            [A,B,C,D,E,F,G,H]
+
+
+        If a jump should be placed where it jumps from ring G to C, reversed back to F, and then discharges from A,
+        we simply reverse the sublist [C,D,E,F], leaving us with::
+
+            [A,B,F,E,D,C,G,H]
+
+
+        A less-complex, more standard convergent-divergent scheme is a subcase of this, where the
+        sublist [A,B,C,D,E] or so is reversed, leaving::
+
+            [E,D,C,B,A,F,G,H]
+
+
+        So the task of this function is simply to determine what subsection, if any, to reverse of
+        the baselist.
+
+        Parameters
+        ----------
+        chargeRing : int, optional
+            The peripheral ring into which an assembly enters the core. Default is outermost ring.
+
+        dischargeRing : int, optional
+            The last ring an assembly sits in before discharging. Default is jumpRing-1
+
+        jumpRingFrom : int
+            The last ring an assembly sits in before jumping to the center
+
+        jumpRingTo : int, optional
+            The inner ring into which a jumping assembly jumps. Default is 1.
+
+        coarseFactor : float, optional
+            A number between 0 and 1 where 0 hits all rings and 1 only hits the outer, rJ, center, and rD rings.
+            This allows coarse shuffling, with large jumps. Default: 0
+
+        Returns
+        -------
+        ringSchedule : list
+            A list of rings in order from discharge to charge.
+
+        ringWidths : list
+            A list of integers corresponding to the ringSchedule determining the widths of each ring area
+
+        Examples
+        -------
+        >>> f.buildRingSchedule(17,1,jumpRingFrom=14)
+        ([13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 14, 15, 16, 17],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+
+        See Also
+        --------
+        findAssembly
+
+        """
+        maxRingInCore = self.r.core.getNumRings()
+        if dischargeRing > maxRingInCore:
+            runLog.warning(
+                f"Discharge ring {dischargeRing} is outside the core (max {maxRingInCore}). "
+                "Changing it to be the max ring"
+            )
+            dischargeRing = maxRingInCore
+        if chargeRing > maxRingInCore:
+            runLog.warning(
+                f"Charge ring {chargeRing} is outside the core (max {maxRingInCore}). "
+                "Changing it to be the max ring."
+            )
+            chargeRing = maxRingInCore
+
+        # process arguments
+        if dischargeRing is None:
+            # No discharge ring given, so we default to converging from outside to inside
+            # and therefore discharging from the center
+            dischargeRing = 1
+        if chargeRing is None:
+            # Charge ring not specified. Since we default to convergent shuffling, we
+            # must insert the fuel at the periphery.
+            chargeRing = maxRingInCore
+        if jumpRingFrom is not None and not (1 < jumpRingFrom < maxRingInCore):
+            raise ValueError(f"JumpRingFrom {jumpRingFrom} is not in the core.")
+        if jumpRingTo is not None and not (1 <= jumpRingTo < maxRingInCore):
+            raise ValueError(f"JumpRingTo {jumpRingTo} is not in the core.")
+
+        if chargeRing > dischargeRing and jumpRingTo is None:
+            # a convergent shuffle with no jumping. By setting
+            # jumpRingTo to be 1, no jumping will be activated
+            # in the later logic.
+            jumpRingTo = 1
+        elif jumpRingTo is None:
+            # divergent case. Disable jumping by putting jumpring
+            # at periphery.
+            if self.r:
+                jumpRingTo = maxRingInCore
+            else:
+                jumpRingTo = 18
+
+        if (
+            chargeRing > dischargeRing
+            and jumpRingFrom is not None
+            and jumpRingFrom < jumpRingTo
+        ):
+            raise RuntimeError("Cannot have outward jumps in convergent cases.")
+        if (
+            chargeRing < dischargeRing
+            and jumpRingFrom is not None
+            and jumpRingFrom > jumpRingTo
+        ):
+            raise RuntimeError("Cannot have inward jumps in divergent cases.")
+
+        # step 1: build the base rings
+        numSteps = int((abs(dischargeRing - chargeRing) + 1) * (1.0 - coarseFactor))
+        if numSteps < 2:
+            # don't let it be smaller than 2 because linspace(1,5,1)= [1], linspace(1,5,2)= [1,5]
+            numSteps = 2
+        baseRings = [
+            int(ring) for ring in numpy.linspace(dischargeRing, chargeRing, numSteps)
+        ]
+        # eliminate duplicates.
+        newBaseRings = []
+        for br in baseRings:
+            if br not in newBaseRings:
+                newBaseRings.append(br)
+        baseRings = newBaseRings
+        # baseRings = list(set(baseRings)) # eliminate duplicates. but ruins order.
+        # build widths
+        widths = []
+        for i, ring in enumerate(baseRings[:-1]):
+            # 0 is the most restrictive, meaning don't even look in other rings.
+            widths.append(abs(baseRings[i + 1] - ring) - 1)
+        widths.append(0)  # add the last ring with width 0.
+
+        # step 2: locate which rings should be reversed to give the jump-ring effect.
+        if jumpRingFrom is not None:
+            _closestRingFrom, jumpRingFromIndex = findClosest(
+                baseRings, jumpRingFrom, indx=True
+            )
+            _closestRingTo, jumpRingToIndex = findClosest(
+                baseRings, jumpRingTo, indx=True
+            )
+        else:
+            jumpRingToIndex = 0
+
+        # step 3: build the final ring list, potentially with a reversed section
+        newBaseRings = []
+        newWidths = []
+        # add in the non-reversed section before the reversed section
+
+        if jumpRingFrom is not None:
+            newBaseRings.extend(baseRings[:jumpRingToIndex])
+            newWidths.extend(widths[:jumpRingToIndex])
+            # add in reversed section that is jumped
+            newBaseRings.extend(reversed(baseRings[jumpRingToIndex:jumpRingFromIndex]))
+            newWidths.extend(reversed(widths[jumpRingToIndex:jumpRingFromIndex]))
+            # add the rest.
+            newBaseRings.extend(baseRings[jumpRingFromIndex:])
+            newWidths.extend(widths[jumpRingFromIndex:])
+        else:
+            # no jump section. Just fill in the rest.
+            newBaseRings.extend(baseRings[jumpRingToIndex:])
+            newWidths.extend(widths[jumpRingToIndex:])
+
+        return newBaseRings, newWidths
+
+    def buildConvergentRingSchedule(
+        self, dischargeRing=1, chargeRing=None, coarseFactor=0.0
+    ):
+        r"""
+        Builds a ring schedule for convergent shuffling from chargeRing to dischargeRing
+
+        Parameters
+        ----------
+        dischargeRing : int, optional
+            The last ring an assembly sits in before discharging. If no discharge, this is the one that
+            gets placed where the charge happens. Default: Innermost ring
+
+        chargeRing : int, optional
+            The peripheral ring into which an assembly enters the core. Default is outermost ring.
+
+        coarseFactor : float, optional
+            A number between 0 and 1 where 0 hits all rings and 1 only hits the outer, rJ, center, and rD rings.
+            This allows coarse shuffling, with large jumps. Default: 0
+
+        Returns
+        -------
+        convergent : list
+            A list of rings in order from discharge to charge.
+
+        conWidths : list
+            A list of integers corresponding to the ringSchedule determining the widths of each ring area
+
+        Examples
+        -------
+
+        See Also
+        --------
+        findAssembly
+
+        """
+        # process arguments
+        if chargeRing is None:
+            chargeRing = self.r.core.getNumRings()
+
+        # step 1: build the convergent rings
+        numSteps = int((chargeRing - dischargeRing + 1) * (1.0 - coarseFactor))
+        if numSteps < 2:
+            # don't let it be smaller than 2 because linspace(1,5,1)= [1], linspace(1,5,2)= [1,5]
+            numSteps = 2
+        convergent = [
+            int(ring) for ring in numpy.linspace(dischargeRing, chargeRing, numSteps)
+        ]
+
+        # step 2. eliminate duplicates
+        convergent = sorted(list(set(convergent)))
+
+        # step 3. compute widths
+        conWidths = []
+        for i, ring in enumerate(convergent[:-1]):
+            conWidths.append(convergent[i + 1] - ring)
+        conWidths.append(1)
+
+        # step 4. assemble and return
+        return convergent, conWidths
+
     def swapAssemblies(self, a1, a2):
         r"""
         Moves a whole assembly from one place to another
@@ -736,7 +986,27 @@ class FuelHandler:
             a1StationaryBlocks, oldA1Location, a2StationaryBlocks, oldA2Location
         )
 
-        self._swapFluxParam(a1, a2)
+
+
+    def _validateAssemblySwap(
+        self, a1StationaryBlocks, oldA1Location, a2StationaryBlocks, oldA2Location
+    ):
+        """
+        Detect whether any blocks containing stationary components were moved
+        after a swap.
+        """
+        for assemblyBlocks, oldLocation in [
+            [a1StationaryBlocks, oldA1Location],
+            [a2StationaryBlocks, oldA2Location],
+        ]:
+            for block in assemblyBlocks:
+                if block.parent.spatialLocator != oldLocation:
+                    raise ValueError(
+                        """Stationary block {} has been moved. Expected to be in location {}. Was moved to {}.""".format(
+                            block, oldLocation, block.parent.spatialLocator
+                        )
+                    )
+
 
     def rotateAssembly(self, assembly, rotNum):
         assembly.rotatePins(rotNum)
@@ -790,21 +1060,25 @@ class FuelHandler:
         ]:
             raise ValueError(
                 """Different number and/or locations of stationary blocks 
-                 between {} and {}.""".format(
-                    assembly1, assembly2
+                 between {} (Stationary Blocks: {}) and {} (Stationary Blocks: {}).""".format(
+                    assembly1, a1StationaryBlocks, assembly2, a2StationaryBlocks
                 )
             )
 
         # swap stationary blocks
-        for blocksAssembly1, blocksAssembly2 in zip(
+        for (assem1Block, assem1BlockIndex), (assem2Block, assem2BlockIndex) in zip(
             a1StationaryBlocks, a2StationaryBlocks
         ):
             # remove stationary blocks
-            assembly1.remove(blocksAssembly1[0])
-            assembly2.remove(blocksAssembly2[0])
+            assembly1.remove(assem1Block)
+            assembly2.remove(assem2Block)
             # insert stationary blocks
-            assembly1.insert(blocksAssembly1[1], blocksAssembly2[0])
-            assembly2.insert(blocksAssembly2[1], blocksAssembly1[0])
+            assembly1.insert(assem1BlockIndex, assem2Block)
+            assembly2.insert(assem2BlockIndex, assem1Block)
+
+        return [item[0] for item in a1StationaryBlocks], [
+            item[0] for item in a2StationaryBlocks
+        ]
 
         return [item[0] for item in a1StationaryBlocks], [
             item[0] for item in a2StationaryBlocks
@@ -855,100 +1129,9 @@ class FuelHandler:
         incoming.p.multiplicity = 1
         self.r.core.add(incoming, loc)
 
-        self._swapFluxParam(incoming, outgoing)
 
-    def _swapFluxParam(self, incoming, outgoing):
-        """
-        Set the flux and power params of the new blocks to that of the old and vice versa.
 
-        This is essential for getting loosely-coupled flux-averaged cross sections from things like
-        :py:class:`armi.physics.neutronics.crossSectionGroupManager.BlockCollectionAverageFluxWeighted`
-
-        Parameters
-        ----------
-        incoming, outgoing : Assembly
-            Assembly objects to be swapped
-        """
-
-        # grab stationary block flags
-        sBFList = self.r.core.stationaryBlockFlagsList
-
-        # Find the block-based mesh points for each assembly
-        meshIn = self.r.core.findAllAxialMeshPoints([incoming], False)
-        meshOut = self.r.core.findAllAxialMeshPoints([outgoing], False)
-
-        # If the assembly mesh points don't match, the swap won't be easy
-        if meshIn != meshOut:
-            runLog.debug(
-                "{0} and {1} have different meshes, resampling.".format(
-                    incoming, outgoing
-                )
-            )
-
-            # grab the current values for incoming and outgoing
-            fluxIn = [b.p.flux for b in incoming]
-            mgFluxIn = [b.p.mgFlux for b in incoming]
-            powerIn = [b.p.power for b in incoming]
-            fluxOut = [b.p.flux for b in outgoing]
-            mgFluxOut = [b.p.mgFlux for b in outgoing]
-            powerOut = [b.p.power for b in outgoing]
-
-            # resample incoming to outgoing, and vice versa
-            fluxOutNew = resampleStepwise(meshIn, fluxIn, meshOut)
-            mgFluxOutNew = resampleStepwise(meshIn, mgFluxIn, meshOut)
-            powerOutNew = resampleStepwise(meshIn, powerIn, meshOut, avg=False)
-            fluxInNew = resampleStepwise(meshOut, fluxOut, meshIn)
-            mgFluxInNew = resampleStepwise(meshOut, mgFluxOut, meshIn)
-            powerInNew = resampleStepwise(meshOut, powerOut, meshIn, avg=False)
-
-            # load the new outgoing values into place
-            for b, flux, mgFlux, power in zip(
-                outgoing, fluxOutNew, mgFluxOutNew, powerOutNew
-            ):
-                b.p.flux = flux
-                b.p.mgFlux = mgFlux
-                b.p.power = power
-                b.p.pdens = power / b.getVolume()
-
-            # load the new incoming values into place
-            for b, flux, mgFlux, power in zip(
-                incoming, fluxInNew, mgFluxInNew, powerInNew
-            ):
-                b.p.flux = flux
-                b.p.mgFlux = mgFlux
-                b.p.power = power
-                b.p.pdens = power / b.getVolume()
-
-            return
-
-        # Since the axial mesh points match, do the simple swap
-        for bi, (bIncoming, bOutgoing) in enumerate(zip(incoming, outgoing)):
-            if any(bIncoming.hasFlags(sbf) for sbf in sBFList) or any(
-                bOutgoing.hasFlags(sbf) for sbf in sBFList
-            ):
-                # stationary blocks are already swapped
-                continue
-
-            incomingFlux = bIncoming.p.flux
-            incomingMgFlux = bIncoming.p.mgFlux
-            incomingPower = bIncoming.p.power
-            outgoingFlux = bOutgoing.p.flux
-            outgoingMgFlux = bOutgoing.p.mgFlux
-            outgoingPower = bOutgoing.p.power
-
-            if outgoingFlux > 0.0:
-                bIncoming.p.flux = outgoingFlux
-                bIncoming.p.mgFlux = outgoingMgFlux
-                bIncoming.p.power = outgoingPower
-                bIncoming.p.pdens = outgoingPower / bIncoming.getVolume()
-
-            if incomingFlux > 0.0:
-                bOutgoing.p.flux = incomingFlux
-                bOutgoing.p.mgFlux = incomingMgFlux
-                bOutgoing.p.power = incomingPower
-                bOutgoing.p.pdens = incomingPower / bOutgoing.getVolume()
-
-    def swapCascade(self, cascInput):
+    def swapCascade(self, assemList):
         """
         This function performs a cascade of swaps on a list of assemblies.
 

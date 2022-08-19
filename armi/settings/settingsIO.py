@@ -16,15 +16,12 @@
 :py:class:`~armi.settings.caseSettings.Settings`, and the contained
 :py:class:`~armi.settings.setting.Setting`.
 """
-import ast
+from typing import Dict, Tuple, Set
 import collections
 import datetime
 import enum
 import os
-import re
-from typing import Dict, Tuple, Set
 import sys
-import warnings
 
 from ruamel.yaml import YAML
 import ruamel.yaml.comments
@@ -34,7 +31,6 @@ from armi.meta import __version__ as version
 from armi import context
 from armi.settings.setting import Setting
 from armi.settings import settingsRules
-from armi.reactor import systemLayoutInput
 from armi.utils.customExceptions import (
     InvalidSettingsFileError,
     SettingException,
@@ -250,7 +246,7 @@ class SettingsReader:
                 self.invalidSettings.add(settingName)
             else:
                 # apply validations
-                settingObj = self.cs.getSetting(settingName)
+                _settingObj = self.cs.getSetting(settingName)
 
                 # The value is automatically coerced into the expected type
                 # when set using either the default or user-defined schema

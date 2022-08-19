@@ -17,6 +17,15 @@ from statistics import mean
 from numpy import array
 from armi import runLog
 from armi.reactor.flags import Flags
+from armi.reactor.components import UnshapedComponent
+
+TARGET_FLAGS_IN_PREFERRED_ORDER = [
+    Flags.FUEL,
+    Flags.CONTROL,
+    Flags.POISON,
+    Flags.SHIELD,
+    Flags.SLUG,
+]
 
 
 class AxialExpansionChanger:
@@ -93,7 +102,7 @@ class AxialExpansionChanger:
             This is useful when target components within a fuel block need to be determined on-the-fly.
         """
         self.setAssembly(a, setFuel)
-        self.expansionData.mapHotTempToComponents(tempGrid, tempField)
+        self.expansionData.updateComponentTempsBy1DTempField(tempGrid, tempField)
         self.expansionData.computeThermalExpansionFactors()
         self.axiallyExpandAssembly(thermal=True)
 
@@ -115,6 +124,23 @@ class AxialExpansionChanger:
         self.linked = AssemblyAxialLinkage(a)
         self.expansionData = ExpansionData(a, setFuel)
         self._isTopDummyBlockPresent()
+
+    def applyColdHeightMassIncrease(self):
+        """
+        Increase component mass because they are declared at cold dims
+
+        Notes
+        -----
+        A cold 1 cm tall component will have more mass that a component with the
+        same mass/length as a component with a hot height of 1 cm. This should be
+        called when the setting `inputHeightsConsideredHot` is used. This basically
+        undoes component.applyHotHeightDensityReduction
+        """
+        for c in self.linked.a.getComponents():
+            axialExpansionFactor = 1.0 + c.material.linearExpansionFactor(
+                c.temperatureInC, c.inputTemperatureInC
+            )
+            c.changeNDensByFactor(axialExpansionFactor)
 
     def _isTopDummyBlockPresent(self):
         """determines if top most block of assembly is a dummy block
@@ -152,7 +178,12 @@ class AxialExpansionChanger:
         """
         mesh = [0.0]
         numOfBlocks = self.linked.a.countBlocksWithFlags()
+        runLog.debug(
+            "Printing component expansion information (growth percentage and 'target component')"
+            "for each block in assembly {0}.".format(self.linked.a)
+        )
         for ib, b in enumerate(self.linked.a):
+            runLog.debug(msg="  Block {0}".format(b))
             if thermal:
                 blockHeight = b.p.heightBOL
             else:
@@ -161,10 +192,18 @@ class AxialExpansionChanger:
             # if ib == 0, leave block bottom = 0.0
             if ib > 0:
                 b.p.zbottom = self.linked.linkedBlocks[b][0].p.ztop
-            # if not in the dummy block, get expansion factor, do alignment, and modify block
-            if ib < (numOfBlocks - 1):
+            isDummyBlock = ib == (numOfBlocks - 1)
+            if not isDummyBlock:
                 for c in b:
+
                     growFrac = self.expansionData.getExpansionFactor(c)
+                    runLog.debug(
+                        msg="      Component {0}, growFrac = {1:.4e}".format(
+                            c, growFrac
+                        )
+                    )
+                    if thermal and self.expansionData.componentReferenceHeight:
+                        blockHeight = self.expansionData.componentReferenceHeight[c]
                     if growFrac >= 0.0:
                         c.height = (1.0 + growFrac) * blockHeight
                     else:
@@ -184,13 +223,26 @@ class AxialExpansionChanger:
                     c.ztop = c.zbottom + c.height
                     # redistribute block boundaries if on the target component
                     if self.expansionData.isTargetComponent(c):
+                        if b.axialExpTargetComponent is None:
+                            runLog.debug(
+                                "      Component {0} is target component (inferred)".format(
+                                    c
+                                )
+                            )
+                        else:
+                            runLog.debug(
+                                "      Component {0} is target component (blueprints defined)".format(
+                                    c
+                                )
+                            )
                         b.p.ztop = c.ztop
 
             # see also b.setHeight()
             # - the above not chosen due to call to calculateZCoords
             oldComponentVolumes = [c.getVolume() for c in b]
-            oldHeight = b.getHeight()
+            oldHeight = b.p.height
             b.p.height = b.p.ztop - b.p.zbottom
+
             _checkBlockHeight(b)
             _conserveComponentMass(b, oldHeight, oldComponentVolumes)
             # set block mid point and redo mesh
@@ -199,57 +251,12 @@ class AxialExpansionChanger:
             mesh.append(b.p.ztop)
             b.spatialLocator = self.linked.a.spatialGrid[0, 0, ib]
 
+        # pylint: disable = protected-access
         bounds = list(self.linked.a.spatialGrid._bounds)
         bounds[2] = array(mesh)
         self.linked.a.spatialGrid._bounds = tuple(bounds)
 
-    def axiallyExpandCoreThermal(self, r, tempGrid, tempField):
-        """
-        Perform thermally driven axial expansion of the core.
-
-        Parameters
-        ----------
-        r : :py:class:`Reactor <armi.reactor.reactors.Reactor>` object.
-            ARMI reactor to be expanded
-        tempGrid : dictionary
-            keys --> :py:class:`Assembly <armi.reactor.assemblies.Assembly>` object
-            values --> grid (list of floats)
-        tempField : dictionary
-            keys --> :py:class:`Assembly <armi.reactor.assemblies.Assembly>` object.
-            values --> temperatures (list of floats)
-
-        """
-        for a in r.core.getAssemblies(includeBolAssems=True):
-            self.setAssembly(a)
-            self.expansionData.mapHotTempToComponents(tempGrid[a], tempField[a])
-            self.expansionData.computeThermalExpansionFactors()
-            self.axiallyExpandAssembly()
-
-        self._manageCoreMesh(r)
-
-    def axiallyExpandCorePercent(self, r, components, percents):
-        """
-        Perform axial expansion of the core driven by user-defined expansion percentages.
-
-        Parameters
-        ----------
-        r : :py:class:`Reactor <armi.reactor.reactors.Reactor>` object.
-            ARMI reactor to be expanded
-        components : dict
-            keys --> :py:class:`Assembly <armi.reactor.assemblies.Assembly>` object
-            values --> list of :py:class:`Component <armi.reactor.components.component.Component>` to be expanded
-        percents : dict
-            keys --> :py:class:`Assembly <armi.reactor.assemblies.Assembly>` object
-            values --> list of percentages to expand :py:class:`Component <armi.reactor.components.component.Component>` by # pylint: disable=line-too-long
-        """
-        for a in r.core.getAssemblies(includeBolAssems=True):
-            self.setAssembly(a)
-            self.expansionData.setExpansionFactors(components[a], percents[a])
-            self.axiallyExpandAssembly()
-
-        self._manageCoreMesh(r)
-
-    def _manageCoreMesh(self, r):
+    def manageCoreMesh(self, r):
         """
         manage core mesh post assembly-level expansion
 
@@ -262,23 +269,20 @@ class AxialExpansionChanger:
         -----
         - if no detailedAxialExpansion, then do "cheap" approach to uniformMesh converter.
         - update average core mesh values with call to r.core.updateAxialMesh()
+        - oldMesh will be None during initial core construction at processLoading as it has not yet
+          been set.
         """
         if not self._detailedAxialExpansion:
             # loop through again now that the reference is adjusted and adjust the non-fuel assemblies.
-            refAssem = r.core.refAssem
-            axMesh = refAssem.getAxialMesh()
-            for a in r.core.getAssemblies(includeBolAssems=True):
-                # See ARMI Ticket #112 for explanation of the commented out code
-                a.setBlockMesh(
-                    axMesh
-                )  # , conserveMassFlag=True, adjustList=adjustList)
+            for a in r.core.getAssemblies():
+                a.setBlockMesh(r.core.refAssem.getAxialMesh())
 
         oldMesh = r.core.p.axialMesh
-        r.core.updateAxialMesh()  # floating point correction
-        runLog.important(
-            "Adjusted full core fuel axial mesh uniformly "
-            "From {0} cm to {1} cm.".format(oldMesh, r.core.p.axialMesh)
-        )
+        r.core.updateAxialMesh()
+        if oldMesh:
+            runLog.extra("Updated r.core.p.axialMesh (old, new)")
+            for old, new in zip(oldMesh, r.core.p.axialMesh):
+                runLog.extra(f"{old:.6e}\t{new:.6e}")
 
 
 def _conserveComponentMass(b, oldHeight, oldVolume):
@@ -332,8 +336,6 @@ class AssemblyAxialLinkage:
                    see also: self._getLinkedComponents
     """
 
-    _TOLERANCE = 1.0e-03
-
     def __init__(self, StdAssem):
         self.a = StdAssem
         self.linkedBlocks = {}
@@ -355,7 +357,7 @@ class AssemblyAxialLinkage:
         b : :py:class:`Block <armi.reactor.blocks.Block>` object
             block to determine axial linkage for
 
-        NOTES
+        Notes
         -----
         - block linkage is determined by matching ztop/zbottom (see below)
         - block linkage is stored in self.linkedBlocks[b]
@@ -382,6 +384,25 @@ class AssemblyAxialLinkage:
 
         self.linkedBlocks[b] = [lowerLinkedBlock, upperLinkedBlock]
 
+        if lowerLinkedBlock is None:
+            runLog.debug(
+                "Assembly {0:22s} at location {1:22s}, Block {2:22s}"
+                "is not linked to a block below!".format(
+                    str(self.a.getName()),
+                    str(self.a.getLocation()),
+                    str(b.p.flags),
+                )
+            )
+        if upperLinkedBlock is None:
+            runLog.debug(
+                "Assembly {0:22s} at location {1:22s}, Block {2:22s}"
+                "is not linked to a block above!".format(
+                    str(self.a.getName()),
+                    str(self.a.getLocation()),
+                    str(b.p.flags),
+                )
+            )
+
     def _getLinkedComponents(self, b, c):
         """retrieve the axial linkage for component c
 
@@ -391,17 +412,29 @@ class AssemblyAxialLinkage:
             key to access blocks containing linked components
         c : :py:class:`Component <armi.reactor.components.component.Component>` object
             component to determine axial linkage for
+
+        Raises
+        ------
+        RuntimeError
+            multiple candidate components are found to be axially linked to a component
         """
         lstLinkedC = [None, None]
         for ib, linkdBlk in enumerate(self.linkedBlocks[b]):
             if linkdBlk is not None:
                 for otherC in linkdBlk.getChildren():
-                    if isinstance(
-                        otherC, type(c)
-                    ):  # equivalent to type(otherC) == type(c)
-                        area_diff = abs(otherC.getArea() - c.getArea())
-                        if area_diff < self._TOLERANCE:
-                            lstLinkedC[ib] = otherC
+                    if _determineLinked(c, otherC):
+                        if lstLinkedC[ib] is not None:
+                            errMsg = (
+                                "Multiple component axial linkages have been found for "
+                                "Component {0}; Block {1}; Assembly {2}."
+                                " This is indicative of an error in the blueprints! Linked components found are"
+                                "{3} and {4}".format(
+                                    c, b, b.parent, lstLinkedC[ib], otherC
+                                )
+                            )
+                            runLog.error(msg=errMsg)
+                            raise RuntimeError(errMsg)
+                        lstLinkedC[ib] = otherC
 
         self.linkedComponents[c] = lstLinkedC
 
@@ -427,12 +460,75 @@ class AssemblyAxialLinkage:
             )
 
 
+def _determineLinked(componentA, componentB):
+    """determine axial component linkage for two components
+
+    Parameters
+    ----------
+    componentA : :py:class:`Component <armi.reactor.components.component.Component>`
+        component of interest
+    componentB : :py:class:`Component <armi.reactor.components.component.Component>`
+        component to compare and see if is linked to componentA
+
+    Notes
+    -----
+    - Requires that shapes have the getCircleInnerDiameter and getBoundingCircleOuterDiameter defined
+    - For axial linkage to be True, components MUST be solids, the same Component Class, multiplicity, and meet inner
+      and outer diameter requirements.
+    - When component dimensions are retrieved, cold=True to ensure that dimensions are evaluated
+      at cold/input temperatures. At temperature, solid-solid interfaces in ARMI may produce
+      slight overlaps due to thermal expansion. Handling these potential overlaps are out of scope.
+
+    Returns
+    -------
+    linked : bool
+        status is componentA and componentB are axially linked to one another
+    """
+    if (
+        (componentA.containsSolidMaterial() and componentB.containsSolidMaterial())
+        and isinstance(componentA, type(componentB))
+        and (componentA.getDimension("mult") == componentB.getDimension("mult"))
+    ):
+        if isinstance(componentA, UnshapedComponent):
+            runLog.warning(
+                f"Components {componentA} and {componentB} are UnshapedComponents "
+                "and do not have 'getCircleInnerDiameter' or getBoundingCircleOuterDiameter methods; "
+                "nor is it physical to do so. Instead of crashing and raising an error, "
+                "they are going to be assumed to not be linked.",
+                single=True,
+            )
+            linked = False
+        else:
+            idA, odA = (
+                componentA.getCircleInnerDiameter(cold=True),
+                componentA.getBoundingCircleOuterDiameter(cold=True),
+            )
+            idB, odB = (
+                componentB.getCircleInnerDiameter(cold=True),
+                componentB.getBoundingCircleOuterDiameter(cold=True),
+            )
+
+            biggerID = max(idA, idB)
+            smallerOD = min(odA, odB)
+            if biggerID >= smallerOD:
+                # one object fits inside the other
+                linked = False
+            else:
+                linked = True
+
+    else:
+        linked = False
+
+    return linked
+
+
 class ExpansionData:
     """object containing data needed for axial expansion"""
 
     def __init__(self, a, setFuel):
         self._a = a
-        self._oldHotTemp = {}
+        self.componentReferenceHeight = {}
+        self.componentReferenceTemperature = {}
         self._expansionFactors = {}
         self._componentDeterminesBlockHeight = {}
         self._setTargetComponents(setFuel)
@@ -468,28 +564,28 @@ class ExpansionData:
         for c, p in zip(componentLst, percents):
             self._expansionFactors[c] = p
 
-    def mapHotTempToComponents(self, tempGrid, tempField):
-        """map axial temp distribution to blocks and components in self.a
+    def updateComponentTempsBy1DTempField(self, tempGrid, tempField):
+        """assign a block-average axial temperature to components
 
         Parameters
         ----------
         tempGrid : numpy array
-            axial temperature grid (i.e., physical locations where temp is stored)
+            1D axial temperature grid (i.e., physical locations where temp is stored)
         tempField : numpy array
             temperature values along grid
 
         Notes
         -----
-        - maps the radially uniform axial temperature distribution to components
+        - maps a 1D axial temperature distribution to components
         - searches for temperatures that fall within the bounds of a block,
           averages them, and assigns them as appropriate
-        - The second portion, when component volume is set, is functionally very similar
-        to c.computeVolume(), however differs in the temperatures that get used to compute dimensions.
-           - In c.getArea() -> c.getComponentArea(cold=cold) -> self.getDimension(str, cold=cold),
-        cold=False results in self.getDimension to use the cold/input component temperature.
-        However, we want the "old hot" temp to be used. So, here we manually call
-        c.getArea and pass in the correct "cold" (old hot) temperature. This ensures that
-        component mass is conserved.
+        - Updating component volume is functionally very similar to c.computeVolume().
+          However, this implementation differs in the temperatures that get used to compute dimensions.
+            - In c.getArea() -> c.getComponentArea(cold=cold) -> self.getDimension(str, cold=cold),
+              cold=False results in self.getDimension to use the cold/input component temperature.
+            - However, we want the temperature from the previous state to be used (the reference temperature).
+              So, here we manually call c.getArea() and pass in the reference temperature. This ensures that
+              as the component is expanded its mass is conserved.
 
         Raises
         ------
@@ -502,7 +598,7 @@ class ExpansionData:
             runLog.error("tempGrid and tempField must have the same length.")
             raise RuntimeError
 
-        self._oldHotTemp = {}  # reset, just to be safe
+        self.componentReferenceTemperature = {}  # reset, just to be safe
         for b in self._a:
             tmpMapping = []
             for idz, z in enumerate(tempGrid):
@@ -521,12 +617,16 @@ class ExpansionData:
 
             blockAveTemp = mean(tmpMapping)
             for c in b:
-                self._oldHotTemp[c] = c.temperatureInC  # stash the "old" hot temp
-                # set component volume to be evaluated at "old" hot temp
-                c.p.volume = c.getArea(cold=self._oldHotTemp[c]) * c.parent.getHeight()
+                self.componentReferenceHeight[c] = b.getHeight()
+                # store the temperature from previous state (i.e., reference temp)
+                self.componentReferenceTemperature[c] = c.temperatureInC
+                # set component volume to be evaluated at reference temp
+                c.p.volume = (
+                    c.getArea(cold=self.componentReferenceTemperature[c])
+                    * c.parent.getHeight()
+                )
                 # DO NOT use self.setTemperature(). This calls changeNDensByFactor(f)
-                # and ruins mass conservation via number densities. Instead,
-                # set manually.
+                # and ruins mass conservation via number densities. Instead, set manually.
                 c.temperatureInC = blockAveTemp
 
     def computeThermalExpansionFactors(self):
@@ -534,7 +634,15 @@ class ExpansionData:
 
         for b in self._a:
             for c in b:
-                self._expansionFactors[c] = c.getThermalExpansionFactor() - 1.0
+                if self.componentReferenceTemperature:
+                    self._expansionFactors[c] = (
+                        c.getThermalExpansionFactor(
+                            T0=self.componentReferenceTemperature[c]
+                        )
+                        - 1.0
+                    )
+                else:
+                    self._expansionFactors[c] = c.getThermalExpansionFactor() - 1.0
 
     def getExpansionFactor(self, c):
         """retrieves expansion factor for c
@@ -548,26 +656,31 @@ class ExpansionData:
         if c in self._expansionFactors:
             value = self._expansionFactors[c]
         else:
-            runLog.debug("No expansion factor for {}! Setting to 0.0".format(c))
             value = 0.0
         return value
 
     def _setTargetComponents(self, setFuel):
         """sets target component for each block
 
-        - To-Do: allow users to specify target component for a block in settings
+        Parameters
+        ----------
+        setFuel : bool
+            boolean to determine if fuel block should have its target component set. Useful for when
+            target components should be determined on the fly.
         """
         for b in self._a:
-            if b.hasFlags(Flags.PLENUM) or b.hasFlags(Flags.ACLP):
-                self.specifyTargetComponent(b, Flags.CLAD)
+            if b.axialExpTargetComponent is not None:
+                self._componentDeterminesBlockHeight[b.axialExpTargetComponent] = True
+            elif b.hasFlags(Flags.PLENUM) or b.hasFlags(Flags.ACLP):
+                self.determineTargetComponent(b, Flags.CLAD)
             elif b.hasFlags(Flags.DUMMY):
-                self.specifyTargetComponent(b, Flags.COOLANT)
+                self.determineTargetComponent(b, Flags.COOLANT)
             elif setFuel and b.hasFlags(Flags.FUEL):
                 self._isFuelLocked(b)
             else:
-                self.specifyTargetComponent(b)
+                self.determineTargetComponent(b)
 
-    def specifyTargetComponent(self, b, flagOfInterest=None):
+    def determineTargetComponent(self, b, flagOfInterest=None):
         """appends target component to self._componentDeterminesBlockHeight
 
         Parameters
@@ -580,7 +693,7 @@ class ExpansionData:
         Notes
         -----
         - if flagOfInterest is None, finds the component within b that contains flags that
-          are defined in b.p.flags
+          are defined in a preferred order of flags, or barring that, in b.p.flags
         - if flagOfInterest is not None, finds the component that contains the flagOfInterest.
 
         Raises
@@ -590,8 +703,16 @@ class ExpansionData:
         RuntimeError
             multiple target components found
         """
+
         if flagOfInterest is None:
-            componentWFlag = [c for c in b.getChildren() if c.p.flags in b.p.flags]
+            # Follow expansion of most neutronically important component, fuel first then control/poison
+            for targetFlag in TARGET_FLAGS_IN_PREFERRED_ORDER:
+                componentWFlag = [c for c in b.getChildren() if c.hasFlags(targetFlag)]
+                if componentWFlag != []:
+                    break
+            # some blocks/components are not included in the above list but should still be found
+            if not componentWFlag:
+                componentWFlag = [c for c in b.getChildren() if c.p.flags in b.p.flags]
         else:
             componentWFlag = [c for c in b.getChildren() if c.hasFlags(flagOfInterest)]
         if len(componentWFlag) == 0:

@@ -20,6 +20,10 @@
 # useless-object-inheritance: New-style classes in python 2
 # no-else-return: multiple return statements are not considered bad practice
 # duplicate-code: The duplicate code pylint founds is just not interesting.
+# invalid-name: frequently, scientifically-meaningful names do not apply to these rules
+# line-too-long: we rely on black to handle this
+# logging-format-interpolation: this rule seems arbitrary and useless
+# unnecessary-pass: We actually like these, particularly for abstract classes.
 disable =
     bad-whitespace,
     trailing-whitespace,
@@ -41,7 +45,11 @@ disable =
     too-few-public-methods,
     useless-object-inheritance,
     no-else-return,
-    duplicate-code
+    duplicate-code,
+    invalid-name,
+    line-too-long,
+    logging-format-interpolation,
+    unnecessary-pass
 
 [BASIC]
 dummy-variables-rgx=_[a-zA-Z_]*

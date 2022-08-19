@@ -25,7 +25,7 @@ from armi.reactor.tests import test_reactors
 from armi.tests import mockRunLogs, TEST_ROOT
 
 
-class MemoryProfilerTests(unittest.TestCase):
+class TestMemoryProfiler(unittest.TestCase):
     def setUp(self):
         self.o, self.r = test_reactors.loadTestReactor(TEST_ROOT, {"debugMem": True})
         self.memPro = self.o.getInterface("memoryProfiler")
@@ -42,9 +42,7 @@ class MemoryProfilerTests(unittest.TestCase):
 
             # we should start at info level, and that should be working correctly
             self.assertEqual(runLog.LOG.getVerbosity(), logging.INFO)
-            self.memPro._printFullMemoryBreakdown(
-                startsWith="armi.physics", reportSize=False
-            )
+            self.memPro._printFullMemoryBreakdown(reportSize=False)
 
             # do some basic testing
             self.assertTrue(mock._outputStream.count("UNIQUE_INSTANCE_COUNT") > 10)
@@ -63,6 +61,66 @@ class MemoryProfilerTests(unittest.TestCase):
 
             # do some basic testing
             self.assertIn("End Memory Usage Report", mock._outputStream)
+
+    def test_printFullMemoryBreakdown(self):
+        with mockRunLogs.BufferLog() as mock:
+            # we should start with a clean slate
+            self.assertEqual("", mock._outputStream)
+            runLog.LOG.startLog("test_displayMemUsage")
+            runLog.LOG.setVerbosity(logging.INFO)
+
+            # we should start at info level, and that should be working correctly
+            self.assertEqual(runLog.LOG.getVerbosity(), logging.INFO)
+            self.memPro._printFullMemoryBreakdown(reportSize=True)
+
+            # do some basic testing
+            self.assertIn("UNIQUE_INSTANCE_COUNT", mock._outputStream)
+            self.assertIn(" MB", mock._outputStream)
+
+    def test_getReferrers(self):
+        with mockRunLogs.BufferLog() as mock:
+            # we should start with a clean slate
+            self.assertEqual("", mock._outputStream)
+            testName = "test_getReferrers"
+            runLog.LOG.startLog(testName)
+            runLog.LOG.setVerbosity(logging.DEBUG)
+
+            # grab the referrers
+            self.memPro.getReferrers(self.r)
+            memLog = mock._outputStream
+
+        # test the results
+        self.assertGreater(memLog.count("ref for"), 10)
+        self.assertLess(memLog.count("ref for"), 50)
+        self.assertIn(testName, memLog)
+        self.assertIn("Reactor", memLog)
+        self.assertIn("core", memLog)
+
+    def test_checkForDuplicateObjectsOnArmiModel(self):
+        with mockRunLogs.BufferLog() as mock:
+            # we should start with a clean slate
+            self.assertEqual("", mock._outputStream)
+            testName = "test_checkForDuplicateObjectsOnArmiModel"
+            runLog.LOG.startLog(testName)
+            runLog.LOG.setVerbosity(logging.IMPORTANT)
+
+            # check for duplicates
+            with self.assertRaises(RuntimeError):
+                self.memPro.checkForDuplicateObjectsOnArmiModel("cs", self.r.core)
+
+            # validate the outputs are as we expect
+            self.assertIn(
+                "There are 2 unique objects stored as `.cs`", mock._outputStream
+            )
+            self.assertIn("Expected id", mock._outputStream)
+            self.assertIn("Expected object", mock._outputStream)
+            self.assertIn("These types of objects", mock._outputStream)
+            self.assertIn("MemoryProfiler", mock._outputStream)
+            self.assertIn("MainInterface", mock._outputStream)
+
+    def test_profileMemoryUsageAction(self):
+        pmua = memoryProfiler.ProfileMemoryUsageAction("timeDesc")
+        self.assertEqual(pmua.timeDescription, "timeDesc")
 
 
 class KlassCounterTests(unittest.TestCase):

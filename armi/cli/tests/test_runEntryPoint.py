@@ -19,10 +19,10 @@ import sys
 import unittest
 
 from armi.__main__ import main
+from armi.bookkeeping.visualization.entryPoint import VisFileEntryPoint
 from armi.cli.checkInputs import CheckInputEntryPoint, ExpandBlueprints
 from armi.cli.clone import CloneArmiRunCommandBatch, CloneSuiteCommand
 from armi.cli.compareCases import CompareCases, CompareSuites
-from armi.cli.copyDB import CopyDB
 from armi.cli.database import ConvertDB, ExtractInputs, InjectInputs
 from armi.cli.migrateInputs import MigrateInputs
 from armi.cli.modify import ModifyCaseSettingsCommand
@@ -91,6 +91,7 @@ class TestConvertDB(unittest.TestCase):
         cdb.parse_args(["/path/to/fake.h5"])
 
         self.assertEqual(cdb.name, "convert-db")
+        self.assertEqual(cdb.args.output_version, "3")
         self.assertIsNone(cdb.args.nodes)
 
         # Since the file is fake, invoke() should exit early.
@@ -100,17 +101,17 @@ class TestConvertDB(unittest.TestCase):
                 cdb.invoke()
             self.assertIn("Converting the", mock._outputStream)
 
-
-class TestCopyDB(unittest.TestCase):
-    def test_copyDBBasics(self):
-        cdb = CopyDB()
+    def test_convertDbOutputVersion(self):
+        cdb = ConvertDB()
         cdb.addOptions()
-        cdb.parse_args(["cs_path", "/path/to/fake1.h5", "/path/to/fake2.h5"])
+        cdb.parse_args(["/path/to/fake.h5", "--output-version", "XtView"])
+        self.assertEqual(cdb.args.output_version, "2")
 
-        self.assertEqual(cdb.name, "copy-db")
-        self.assertEqual(cdb.args.csPath, "cs_path")
-        self.assertEqual(cdb.args.srcDB, "/path/to/fake1.h5")
-        self.assertEqual(cdb.args.tarDB, "/path/to/fake2.h5")
+    def test_convertDbOutputNodes(self):
+        cdb = ConvertDB()
+        cdb.addOptions()
+        cdb.parse_args(["/path/to/fake.h5", "--nodes", "(1,2)"])
+        self.assertEqual(cdb.args.nodes, [(1, 2)])
 
 
 class TestExpandBlueprints(unittest.TestCase):
@@ -227,6 +228,16 @@ class TestRunSuiteCommand(unittest.TestCase):
 
         self.assertEqual(rs.name, "run-suite")
         self.assertIsNone(rs.settingsArgument)
+
+
+class TestVisFileEntryPointCommand(unittest.TestCase):
+    def test_visFileEntryPointBasics(self):
+        vf = VisFileEntryPoint()
+        vf.addOptions()
+        vf.parse_args(["/path/to/fake.h5"])
+
+        self.assertEqual(vf.name, "vis-file")
+        self.assertIsNone(vf.settingsArgument)
 
 
 if __name__ == "__main__":

@@ -107,6 +107,18 @@ class TestInspector(unittest.TestCase):
             "<Query: Setting numProcessors points to a nonexistent location:\n1>",
         )
 
+    def test_correctCyclesToZeroBurnup(self):
+        self.inspector._assignCS("nCycles", 666)
+        self.inspector._assignCS("burnSteps", 666)
+
+        self.assertEqual(self.inspector.cs["nCycles"], 666)
+        self.assertEqual(self.inspector.cs["burnSteps"], 666)
+
+        self.inspector._correctCyclesToZeroBurnup()
+
+        self.assertEqual(self.inspector.cs["nCycles"], 1)
+        self.assertEqual(self.inspector.cs["burnSteps"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
