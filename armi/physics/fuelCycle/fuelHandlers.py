@@ -39,7 +39,6 @@ from armi.physics.fuelCycle.fuelHandlerFactory import fuelHandlerFactory
 from armi.physics.fuelCycle.fuelHandlerInterface import FuelHandlerInterface
 
 
-
 class FuelHandler:
     """
     A fuel handling machine can move fuel around the core and reactor.
@@ -892,7 +891,6 @@ class FuelHandler:
 
         return assemblyList
 
-
     def buildRingSchedule(
         self,
         chargeRing=None,
@@ -1168,7 +1166,6 @@ class FuelHandler:
         a1.moveTo(oldA2Location)
         a2.moveTo(oldA1Location)
 
-
         self._validateAssemblySwap(
             a1StationaryBlocks, oldA1Location, a2StationaryBlocks, oldA2Location
         )
@@ -1193,7 +1190,6 @@ class FuelHandler:
                             block, oldLocation, block.parent.spatialLocator
                         )
                     )
-
 
     def _transferStationaryBlocks(self, assembly1, assembly2):
         """

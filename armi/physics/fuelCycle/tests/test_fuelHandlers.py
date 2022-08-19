@@ -905,7 +905,6 @@ class TestFuelHandler(ArmiTestHelper):
         with self.assertRaises(ValueError):
             fh.dischargeSwap(a2, a1)
 
-
     def test_validateAssemblySwap(self):
         """
         Test the _validateAssemblySwap method.
@@ -955,7 +954,6 @@ class TestFuelHandler(ArmiTestHelper):
         fh = self.r.o.getInterface("fuelHandler")
         with self.assertRaises(ValueError):
             fh.validateLocations()
-
 
 
 class TestFuelPlugin(unittest.TestCase):
