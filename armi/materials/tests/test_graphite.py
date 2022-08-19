@@ -17,7 +17,6 @@ Tests for graphite material
 import unittest
 
 from armi.materials.graphite import Graphite
-from armi.materials.tests import test_materials
 
 
 class Graphite_TestCase(unittest.TestCase):
@@ -40,6 +39,9 @@ class Graphite_TestCase(unittest.TestCase):
         cur = self.mat.linearExpansionPercent(3000)
         ref = 2.149009
         self.assertAlmostEqual(cur, ref, accuracy)
+
+    def test_propertyValidTemperature(self):
+        self.assertEqual(len(self.mat.propertyValidTemperature), 0)
 
 
 if __name__ == "__main__":

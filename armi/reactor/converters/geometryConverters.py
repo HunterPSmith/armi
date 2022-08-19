@@ -27,11 +27,11 @@ Generally, mass is conserved in geometry conversions.
 import collections
 import copy
 import math
-import os
-
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy
+import operator
+import os
 
 from armi import materials
 from armi import runLog
@@ -326,6 +326,9 @@ class HexToRZThetaConverter(GeometryConverter):
             * ``Axial Coordinates`` --  use :py:class:`armi.reactor.converters.meshConverters._RZThetaReactorMeshConverterByAxialCoordinates`
             * ``Axial Bins`` -- use :py:class:`armi.reactor.converters.meshConverters._RZThetaReactorMeshConverterByAxialBins`
 
+        homogenizeAxiallyByFlags
+            Boolean that if set to True will ignore the `axialConversionType` input and determine a mesh based on the
+            material boundaries for each RZ region axially.
 
     expandReactor : bool
         If True, the HEX-Z reactor will be expanded to full core geometry prior to converting to the RZT reactor.
@@ -379,15 +382,20 @@ class HexToRZThetaConverter(GeometryConverter):
         self.blockVolFracs = collections.defaultdict(dict)
 
     def _generateConvertedReactorMesh(self):
-        """
-        Convert the source reactor using the converterSettings
-        """
+        """Convert the source reactor using the converterSettings"""
         runLog.info("Generating mesh coordinates for the reactor conversion")
         self._radialMeshConversionType = self.converterSettings["radialConversionType"]
         self._axialMeshConversionType = self.converterSettings["axialConversionType"]
+        self._homogenizeAxiallyByFlags = self.converterSettings.get(
+            "homogenizeAxiallyByFlags", False
+        )
         converter = None
         if self._radialMeshConversionType == self._MESH_BY_RING_COMP:
-            if self._axialMeshConversionType == self._MESH_BY_AXIAL_COORDS:
+            if self._homogenizeAxiallyByFlags:
+                converter = meshConverters.RZThetaReactorMeshConverterByRingCompositionAxialFlags(
+                    self.converterSettings
+                )
+            elif self._axialMeshConversionType == self._MESH_BY_AXIAL_COORDS:
                 converter = meshConverters.RZThetaReactorMeshConverterByRingCompositionAxialCoordinates(
                     self.converterSettings
                 )
@@ -860,7 +868,7 @@ class HexToRZThetaConverter(GeometryConverter):
                     msg + "Modify mesh converter settings before proceeding."
                 )
             else:
-                runLog.important(msg)
+                runLog.extra(msg)
 
         homBlockType = self._getHomogenizedBlockType(numHexBlockByType)
         homBlockTemperature = homBlockTemperature / homBlockVolume
@@ -1180,6 +1188,25 @@ class ThirdCoreHexToFullCoreChanger(GeometryChanger):
         geometry.DomainType.THIRD_CORE, geometry.BoundaryType.PERIODIC
     )
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.listOfVolIntegratedParamsToScale = []
+
+    def _scaleBlockVolIntegratedParams(self, b, direction):
+        if direction == "up":
+            op = operator.mul
+        elif direction == "down":
+            op = operator.truediv
+
+        for param in self.listOfVolIntegratedParamsToScale:
+            if b.p[param] is None:
+                continue
+            if type(b.p[param]) == list:
+                # some params like volume-integrated mg flux are lists
+                b.p[param] = [op(val, 3) for val in b.p[param]]
+            else:
+                b.p[param] = op(b.p[param], 3)
+
     def convert(self, r=None):
         """
         Run the conversion.
@@ -1233,22 +1260,48 @@ class ThirdCoreHexToFullCoreChanger(GeometryChanger):
                 r.core.add(newAssem, r.core.spatialGrid[i, j, 0])
                 self._newAssembliesAdded.append(newAssem)
 
+            if a.getLocation() == "001-001":
+                runLog.extra(
+                    f"Modifying parameters in central assembly {a} to convert from 1/3 to full core"
+                )
+
+                if not self.listOfVolIntegratedParamsToScale:
+                    # populate the list with all parameters that are VOLUME_INTEGRATED
+                    (
+                        self.listOfVolIntegratedParamsToScale,
+                        _,
+                    ) = _generateListOfParamsToScale(r, paramsToScaleSubset=[])
+
+                for b in a:
+                    self._scaleBlockVolIntegratedParams(b, "up")
+
         # set domain after expanding, because it isnt actually full core until it's
         # full core; setting the domain causes the core to clear its caches.
         r.core.symmetry = geometry.SymmetryType(
             geometry.DomainType.FULL_CORE, geometry.BoundaryType.NO_SYMMETRY
         )
 
-    def restorePreviousGeometry(self, cs, reactor):
+    def restorePreviousGeometry(self, r):
         """Undo the changes made by convert by going back to 1/3 core."""
         # remove the assemblies that were added when the conversion happened.
         if bool(self.getNewAssembliesAdded()):
             for a in self.getNewAssembliesAdded():
-                reactor.core.removeAssembly(a, discharge=False)
+                r.core.removeAssembly(a, discharge=False)
 
-            reactor.core.symmetry = geometry.SymmetryType.fromAny(
+            r.core.symmetry = geometry.SymmetryType.fromAny(
                 self.EXPECTED_INPUT_SYMMETRY
             )
+
+            # clear the list for next time
+            self._newAssembliesAdded = []
+
+            # change the central assembly params back to 1/3
+            a = r.core.getAssemblyWithStringLocation("001-001")
+            runLog.extra(
+                f"Modifying parameters in central assembly {a} to revert from full to 1/3 core"
+            )
+            for b in a:
+                self._scaleBlockVolIntegratedParams(b, "down")
 
 
 class EdgeAssemblyChanger(GeometryChanger):

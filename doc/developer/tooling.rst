@@ -3,7 +3,7 @@ Tooling and Infrastructure
 
 Good Commit Messages
 --------------------
-The ARMI project follows a few basic rools for "good" commit messages:
+The ARMI project follows a few basic rules for "good" commit messages:
 
 * The purpose of the message is to explain to the changes you made to a stranger 5 years from now.
 * Keep your writing short and to the point.
@@ -22,6 +22,60 @@ The ARMI project follows a few basic rools for "good" commit messages:
     * totally
     * optional.
 
+Good Pull Requests
+------------------
+A good commit is like a sentence; it expresses one complete thought. In that context, a good
+Pull Request (PR) is like a paragraph; it contains a few sentences that contain one larger
+thought. A good PR is *not* a chapter or an entire book! It should not contain multiple
+independent ideas.
+
+One Idea = One PR
+^^^^^^^^^^^^^^^^^
+.. important ::
+    If you *can* break a PR into smaller PRs, containing unrelated changes, please do.
+
+It is a discourtesy to your reviewers to make them review a PR with multiple, unrelated changes.
+It forces them to look at every line of diff in your PR and figure out which change it belongs to.
+They are busy people, and it will save them time and effort if your PR only has one main idea.
+If your PRs are smaller, you will notice a great increase in the quality of the reviews you get.
+
+Don't open until it is ready
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.. important ::
+    Wait until your PR is complete to open it.
+
+Your PR isn't complete when the code works, it is complete when the code is polished and all the
+tests are written and working. The idea here is: as soon as you open a PR, people will start
+spending their time looking at it. And their time is valuable. An exception to this rule is that
+GitHub allows you to `open a Draft PR <https://github.blog/2019-02-14-introducing-draft-pull-requests/>`_
+which is a nice option if you need to open your PR early for some reason (usually testing). You
+can also convert any open PR to Draft if you decide it needs more work.
+
+Test It
+^^^^^^^
+.. important ::
+    If a PR doesn't have any changes to testing, it probably isn't complete.
+
+Unless a PR is just documentation or linting, it almost certainly needs testing to be complete.
+For example:
+
+* If a PR adds new code, that code needs new tests to prove it is working.
+* If a PR changes existing code, there needs to be test changes to prove the code still works.
+* If a PR fixes a bug, there needs to be a test to prove the bug is fixed.
+
+If the changes in the PR are worth the time to make, they are worth the time to test. Help your
+reviewer by proving your code works.
+
+Document It
+^^^^^^^^^^^
+.. important ::
+    If it isn't documented, it doesn't exist.
+
+We auto-document the API, so don't worry about that. But when it comes to documentation, write
+it for somebody who is new to the code base 3 years from now, who needs to understand it in
+nitty-gritty detail to fix a bug without you. Think about variable names, comments, and docstrings.
+Also consider (if you are making a major change) that you might be making something in the docs
+out-of-date.
 
 Packaging and dependency management
 -----------------------------------
@@ -83,7 +137,7 @@ Every release should follow this process:
 1. Ensure all unit tests pass and the documentation is building correctly.
 2. Bump the ``__version__`` string in ``armi/meta.py``.
 3. Add release notes to the documentation:
-   `here <https://github.com/terrapower/armi/tree/master/doc/release>`__.
+   `here <https://github.com/terrapower/armi/tree/main/doc/release>`__.
 4. Tag the commit after it goes into the repo:
   - From this commit: ``git tag -a 1.0.0 -m "Release v1.0.0"``
   - Or from another commit: ``git tag <commit-hash> 1.0.0 -m "Release v1.0.0"``

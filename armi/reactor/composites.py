@@ -31,7 +31,6 @@ See Also: :doc:`/developer/index`.
 """
 import collections
 import itertools
-import math
 import timeit
 from typing import Dict, Optional, Type, Tuple, List, Union
 
@@ -2449,9 +2448,7 @@ class ArmiObject(metaclass=CompositeModelType):
         else:
             return components[0]
 
-    def getComponent(
-        self, typeSpec: TypeSpec, exact=False, returnNull=False, quiet=False
-    ):
+    def getComponent(self, typeSpec: TypeSpec, exact=False, quiet=False):
         """
         Get a particular component from this object.
 
@@ -2471,7 +2468,6 @@ class ArmiObject(metaclass=CompositeModelType):
         Returns
         -------
         Component : The component that matches the critera or None
-
         """
         results = self.getComponents(typeSpec, exact=exact)
         if len(results) == 1:

@@ -20,6 +20,7 @@ import copy
 import math
 import unittest
 
+from armi import nuclearDataIO
 from armi.reactor import components
 from armi.reactor.components import (
     Component,
@@ -45,6 +46,8 @@ from armi.reactor.components import (
     ComponentType,
 )
 from armi.reactor.components import materials
+from armi.reactor.components.component import getReactionRateDict
+from armi.tests import ISOAA_PATH
 from armi.utils import units
 
 
@@ -215,6 +218,7 @@ class TestUnshapedComponent(TestGeneralComponents):
         )
 
         # show that area expansion is consistent with the density change in the material
+        self.component.adjustNDensForHotHeight()
         hotDensity = self.component.density()
         hotArea = self.component.getArea()
         thermalExpansionFactor = self.component.getThermalExpansionFactor(
@@ -230,14 +234,16 @@ class TestUnshapedComponent(TestGeneralComponents):
                 area=math.pi,
             )
         )
+        coldComponent.adjustNDensForHotHeight()
         coldDensity = coldComponent.density()
         coldArea = coldComponent.getArea()
 
         self.assertGreater(thermalExpansionFactor, 1)
+        # thermalExpansionFactor accounts for density being 3D while area is 2D
         self.assertAlmostEqual(
-            (coldDensity / hotDensity) / (thermalExpansionFactor * hotArea / coldArea),
-            1,
-        )  # account for density being 3D while area is 2D
+            (coldDensity * coldArea),
+            (thermalExpansionFactor * hotDensity * hotArea),
+        )
 
     def test_getBoundingCircleOuterDiameter(self):
         # a case without thermal expansion
@@ -339,13 +345,14 @@ class TestDerivedShape(TestShapedComponent):
 
 class TestCircle(TestShapedComponent):
     componentCls = Circle
+    _id = 5.0
     _od = 10
     _coldTemp = 25.0
     componentDims = {
         "Tinput": _coldTemp,
         "Thot": 25.0,
         "od": _od,
-        "id": 5.0,
+        "id": _id,
         "mult": 1.5,
     }
 
@@ -384,6 +391,10 @@ class TestCircle(TestShapedComponent):
         cur = self.component.getBoundingCircleOuterDiameter(cold=True)
         self.assertAlmostEqual(ref, cur)
 
+    def test_getCircleInnerDiameter(self):
+        cur = self.component.getCircleInnerDiameter(cold=True)
+        self.assertAlmostEqual(self._id, cur)
+
     def test_dimensionThermallyExpands(self):
         expandedDims = ["od", "id", "mult"]
         ref = [True, True, False]
@@ -421,6 +432,24 @@ class TestCircle(TestShapedComponent):
         ref = mult * math.pi * ((od / 2.0) ** 2 - (idd / 2.0) ** 2)
         cur = gap.getArea()
         self.assertAlmostEqual(cur, ref)
+
+    def test_badComponentName(self):
+        """This shows that resolveLinkedDims cannot support names with periods in them"""
+        nPins = 12
+        fuelDims = {"Tinput": 25.0, "Thot": 430.0, "od": 0.9, "id": 0.0, "mult": nPins}
+        cladDims = {"Tinput": 25.0, "Thot": 430.0, "od": 1.1, "id": 1.0, "mult": nPins}
+        fuel = Circle("fuel", "UZr", **fuelDims)
+        clad = Circle("clad_4.2.3", "HT9", **cladDims)
+        gapDims = {
+            "Tinput": 25.0,
+            "Thot": 430.0,
+            "od": "clad_4.2.3.id",
+            "id": "fuel.od",
+            "mult": nPins,
+        }
+        gapDims["components"] = {"clad_4.2.3": clad, "fuel": fuel}
+        with self.assertRaises(ValueError):
+            _gap = Circle("gap", "Void", **gapDims)
 
     def test_componentInteractionsLinkingBySubtraction(self):
         r"""Tests linking of components by subtraction."""
@@ -467,6 +496,48 @@ class TestCircle(TestShapedComponent):
         self.assertEqual(self.component.getNumberDensity("NA23"), 1.0)
         self.component.changeNDensByFactor(3.0)
         self.assertEqual(self.component.getNumberDensity("NA23"), 3.0)
+
+    def test_amountConserved(self):
+        """Demonstrate that volume integrated ndense is conserved at different temperatures"""
+        # expansion only happens in 2D so only area is necessary
+        # since component expansion is only in 2D
+        tHotC = 20
+        circle1 = Circle("circle", "HT9", 20, tHotC, 1.0)
+        tHotC = 500
+        circle2 = Circle("circle", "HT9", 20, tHotC, 1.0)
+        self.assertAlmostEqual(
+            circle1.p.numberDensities["FE"] * circle1.getArea(),
+            circle2.p.numberDensities["FE"] * circle2.getArea(),
+        )
+
+        # now 3D with HotHeightDensityReduction and equal height
+        height = 1.0
+        circle1.adjustNDensForHotHeight()
+        circle2.adjustNDensForHotHeight()
+        self.assertAlmostEqual(
+            circle1.p.numberDensities["FE"]
+            * circle1.getArea()
+            * height
+            * circle1.getThermalExpansionFactor(),
+            circle2.p.numberDensities["FE"]
+            * circle2.getArea()
+            * height
+            * circle2.getThermalExpansionFactor(),
+        )
+
+        # now start with cold and make hot and show how quantity is conserved
+        circle1 = Circle("circle", "HT9", 20, 20, 1.0)
+        feNum = circle1.p.numberDensities["FE"] * circle1.getArea() * height
+        circle1.setTemperature(500)
+        # New height will be taller
+        newHeight = height * circle1.getThermalExpansionFactor()
+        # when block.setHeight is called (which effectively changes component height)
+        # component.setNumberDensity is called (for solid isotopes) to adjust the number
+        # density so that now the 2D expansion will be approximated around the hot temp
+        newN = circle1.p.numberDensities["FE"] / circle1.getThermalExpansionFactor()
+        circle1.setNumberDensity("FE", newN)
+        feNumHot = circle1.p.numberDensities["FE"] * circle1.getArea() * newHeight
+        self.assertAlmostEqual(feNum, feNumHot)
 
 
 class TestTriangle(TestShapedComponent):
@@ -540,6 +611,10 @@ class TestRectangle(TestShapedComponent):
         ref = math.sqrt(61.0)
         cur = self.component.getBoundingCircleOuterDiameter(cold=True)
         self.assertAlmostEqual(ref, cur)
+
+    def test_getCircleInnerDiameter(self):
+        cur = self.component.getCircleInnerDiameter(cold=True)
+        self.assertAlmostEqual(math.sqrt(25.0), cur)
 
     def test_getArea(self):
         outerL = self.component.getDimension("lengthOuter")
@@ -647,6 +722,11 @@ class TestSquare(TestShapedComponent):
         cur = self.component.getBoundingCircleOuterDiameter(cold=True)
         self.assertAlmostEqual(ref, cur)
 
+    def test_getCircleInnerDiameter(self):
+        ref = math.sqrt(8.0)
+        cur = self.component.getCircleInnerDiameter(cold=True)
+        self.assertAlmostEqual(ref, cur)
+
     def test_getArea(self):
         outerW = self.component.getDimension("widthOuter")
         innerW = self.component.getDimension("widthInner")
@@ -746,6 +826,11 @@ class TestHexagon(TestShapedComponent):
         cur = self.component.getBoundingCircleOuterDiameter(cold=True)
         self.assertAlmostEqual(ref, cur)
 
+    def test_getCircleInnerDiameter(self):
+        ref = 2.0 * 5.0 / math.sqrt(3)
+        cur = self.component.getCircleInnerDiameter(cold=True)
+        self.assertAlmostEqual(ref, cur)
+
     def test_getArea(self):
         cur = self.component.getArea()
         mult = self.component.getDimension("mult")
@@ -786,6 +871,26 @@ class TestHoledHexagon(TestShapedComponent):
         ref = 2.0 * 16.5 / math.sqrt(3)
         cur = self.component.getBoundingCircleOuterDiameter(cold=True)
         self.assertAlmostEqual(ref, cur)
+
+    def test_getCircleInnerDiameter(self):
+        ref = 0  # there are multiple holes, so the function should return 0
+        cur = self.component.getCircleInnerDiameter(cold=True)
+        self.assertEqual(ref, cur)
+
+        # make and test another one with just 1 hole
+        simpleHoledHexagon = HoledHexagon(
+            "hex",
+            "Void",
+            self.componentDims["Tinput"],
+            self.componentDims["Thot"],
+            self.componentDims["op"],
+            self.componentDims["holeOD"],
+            nHoles=1,
+        )
+        self.assertEqual(
+            self.componentDims["holeOD"],
+            simpleHoledHexagon.getCircleInnerDiameter(cold=True),
+        )
 
     def test_getArea(self):
         op = self.component.getDimension("op")
@@ -845,6 +950,11 @@ class TestHoledRectangle(TestShapedComponent):
         cur = self.component.getBoundingCircleOuterDiameter()
         self.assertAlmostEqual(ref, cur)
 
+    def test_getCircleInnerDiameter(self):
+        ref = self.componentDims["holeOD"]
+        cur = self.component.getCircleInnerDiameter(cold=True)
+        self.assertEqual(ref, cur)
+
     def test_getArea(self):
         rectArea = self.length * self.width
         odHole = self.component.getDimension("holeOD")
@@ -886,6 +996,11 @@ class TestHoledSquare(TestHoledRectangle):
     def test_thermallyExpands(self):
         self.assertTrue(self.component.THERMAL_EXPANSION_DIMS)
 
+    def test_getCircleInnerDiameter(self):
+        ref = self.componentDims["holeOD"]
+        cur = self.component.getCircleInnerDiameter(cold=True)
+        self.assertEqual(ref, cur)
+
 
 class TestHelix(TestShapedComponent):
     componentCls = Helix
@@ -899,9 +1014,14 @@ class TestHelix(TestShapedComponent):
         "id": 0.1,
     }
 
-    def test_getBoundingCircleOuterDiameter(self, Tc=None, cold=False):
-        ref = 0.25 + 2.0
+    def test_getBoundingCircleOuterDiameter(self):
+        ref = 2.0 + 0.25
         cur = self.component.getBoundingCircleOuterDiameter(cold=True)
+        self.assertAlmostEqual(ref, cur)
+
+    def test_getCircleInnerDiameter(self):
+        ref = 2.0 - 0.25
+        cur = self.component.getCircleInnerDiameter(cold=True)
         self.assertAlmostEqual(ref, cur)
 
     def test_getArea(self):
@@ -1173,6 +1293,15 @@ class TestMaterialAdjustments(unittest.TestCase):
     def test_getEnrichment(self):
         self.fuel.adjustMassEnrichment(0.3)
         self.assertAlmostEqual(self.fuel.getEnrichment(), 0.3)
+
+
+class TestGetReactionRateDict(unittest.TestCase):
+    def test_getReactionRateDict(self):
+        lib = nuclearDataIO.isotxs.readBinary(ISOAA_PATH)
+        rxRatesDict = getReactionRateDict(
+            nucName="PU239", lib=lib, xsType="A", mgFlux=1, nDens=1
+        )
+        self.assertEqual(rxRatesDict["nG"], sum(lib["PU39AA"].micros.nGamma))
 
 
 if __name__ == "__main__":

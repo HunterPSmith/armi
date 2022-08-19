@@ -17,7 +17,6 @@ import io
 import os
 
 from ruamel.yaml import YAML
-import voluptuous as vol
 
 from armi.physics import neutronics
 from armi.physics.neutronics.const import CONF_CROSS_SECTION
@@ -111,7 +110,7 @@ class NeutronicsReactorTests(unittest.TestCase):
         cs = _getModifiedSettings(
             customSettings={
                 "beta": [0.0] * 6,
-                "decayConstants": [0.0] * 6,
+                "decayConstants": [1.0] * 6,
             }
         )
         getPluginManagerOrFail().hook.onProcessCoreLoading(core=r.core, cs=cs)
@@ -148,7 +147,7 @@ class NeutronicsReactorTests(unittest.TestCase):
         # parameter.
         r = tests.getEmptyHexReactor()
         cs = _getModifiedSettings(
-            customSettings={"beta": [0.0], "decayConstants": [0.0]},
+            customSettings={"beta": [0.0], "decayConstants": [1.0]},
         )
         getPluginManagerOrFail().hook.onProcessCoreLoading(core=r.core, cs=cs)
         self.assertEqual(r.core.p.beta, sum(cs["beta"]))
@@ -159,7 +158,7 @@ class NeutronicsReactorTests(unittest.TestCase):
         # group-wise beta input.
         r = tests.getEmptyHexReactor()
         cs = _getModifiedSettings(
-            customSettings={"decayConstants": [0.0] * 6},
+            customSettings={"decayConstants": [1.0] * 6},
         )
         getPluginManagerOrFail().hook.onProcessCoreLoading(core=r.core, cs=cs)
         self.assertIsNone(r.core.p.beta)
@@ -171,7 +170,7 @@ class NeutronicsReactorTests(unittest.TestCase):
         # is still assigned.
         r = tests.getEmptyHexReactor()
         cs = _getModifiedSettings(
-            customSettings={"decayConstants": [0.0] * 6, "beta": 0.0},
+            customSettings={"decayConstants": [1.0] * 6, "beta": 0.0},
         )
         getPluginManagerOrFail().hook.onProcessCoreLoading(core=r.core, cs=cs)
         self.assertEqual(r.core.p.beta, cs["beta"])
@@ -194,7 +193,7 @@ class NeutronicsReactorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             r = tests.getEmptyHexReactor()
             cs = _getModifiedSettings(
-                customSettings={"decayConstants": [0.0] * 6, "beta": [0.0]},
+                customSettings={"decayConstants": [1.0] * 6, "beta": [0.0]},
             )
             getPluginManagerOrFail().hook.onProcessCoreLoading(core=r.core, cs=cs)
 
@@ -203,38 +202,7 @@ class NeutronicsReactorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             r = tests.getEmptyHexReactor()
             cs = _getModifiedSettings(
-                customSettings={"decayConstants": [0.0] * 6, "beta": [0.0] * 5},
-            )
-            getPluginManagerOrFail().hook.onProcessCoreLoading(core=r.core, cs=cs)
-
-        # The following tests check the voluptuous schema definition. This
-        # ensures that anything except NoneType, [float], float are not valid
-        # inputs.
-        with self.assertRaises(vol.AnyInvalid):
-            r = tests.getEmptyHexReactor()
-            cs = _getModifiedSettings(
-                customSettings={"decayConstants": [1]},
-            )
-            getPluginManagerOrFail().hook.onProcessCoreLoading(core=r.core, cs=cs)
-
-        with self.assertRaises(vol.AnyInvalid):
-            r = tests.getEmptyHexReactor()
-            cs = _getModifiedSettings(
-                customSettings={"beta": [1]},
-            )
-            getPluginManagerOrFail().hook.onProcessCoreLoading(core=r.core, cs=cs)
-
-        with self.assertRaises(vol.AnyInvalid):
-            r = tests.getEmptyHexReactor()
-            cs = _getModifiedSettings(
-                customSettings={"beta": 1},
-            )
-            getPluginManagerOrFail().hook.onProcessCoreLoading(core=r.core, cs=cs)
-
-        with self.assertRaises(vol.AnyInvalid):
-            r = tests.getEmptyHexReactor()
-            cs = _getModifiedSettings(
-                customSettings={"beta": (1, 2, 3)},
+                customSettings={"decayConstants": [1.0] * 6, "beta": [0.0] * 5},
             )
             getPluginManagerOrFail().hook.onProcessCoreLoading(core=r.core, cs=cs)
 

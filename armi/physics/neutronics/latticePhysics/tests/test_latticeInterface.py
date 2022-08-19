@@ -14,7 +14,6 @@
 
 """Test the Lattice Interface"""
 
-import os
 import unittest
 
 from armi.physics.neutronics.latticePhysics.latticePhysicsInterface import (
@@ -43,7 +42,7 @@ class TestLatticePhysicsInterface(unittest.TestCase):
     def test_LatticePhysicsInterface(self):
         """Super basic test of the LatticePhysicsInterface"""
         cs = Settings()
-        o, r = loadTestReactor()
+        _o, r = loadTestReactor()
         i = LatticeInterfaceTester(r, cs)
 
         self.assertEqual(i._HEX_MODEL.strip(), "hex")

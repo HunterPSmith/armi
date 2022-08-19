@@ -135,10 +135,8 @@ class DirectoryChanger:
         entire directory to aid in debugging. Typically this is only called if
         ``dumpOnException`` is True.
         """
-        initialPath = self.destination
         folderName = os.path.split(self.destination)[1]
         recoveryPath = os.path.join(self.initial, f"dump-{folderName}")
-        fileList = os.listdir(self.destination)
         shutil.copytree(self.destination, recoveryPath)
 
     @staticmethod
@@ -259,13 +257,20 @@ class TemporaryDirectoryChanger(DirectoryChanger):
 
     def __exit__(self, exc_type, exc_value, traceback):
         DirectoryChanger.__exit__(self, exc_type, exc_value, traceback)
-        pathTools.cleanPath(self.destination)
+        try:
+            pathTools.cleanPath(self.destination, context.MPI_RANK)
+        except PermissionError:
+            if os.name == "nt":
+                runLog.warning(
+                    "There is an issue where Windows will not agree to delete private directories."
+                    "That is, if you create a directory with a name starting with a period, the "
+                    "TempDirChanger will not be able to clean it (for instance, a '.git' dir)."
+                )
+        context.waitAll()
 
 
 class ForcedCreationDirectoryChanger(DirectoryChanger):
-    """
-    Creates the directory tree necessary to reach your desired destination
-    """
+    """Creates the directory tree necessary to reach your desired destination"""
 
     def __init__(
         self,

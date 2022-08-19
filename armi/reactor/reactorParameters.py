@@ -20,7 +20,6 @@ import numpy
 from armi.utils import units
 from armi.reactor import parameters
 from armi.reactor.parameters import ParamLocation
-from armi.reactor import geometry
 
 
 def defineReactorParameters():
@@ -53,6 +52,8 @@ def defineReactorParameters():
             description="Length of the cycle, including outage time described by availabilityFactor",
         )
 
+        pb.defParam("stepLength", units="days", description="Length of current step")
+
         pb.defParam(
             "availabilityFactor",
             units="fraction",
@@ -74,7 +75,7 @@ def defineReactorParameters():
         pb.defParam(
             "time",
             units="yr",
-            description="time of reactor life from BOL to current time node",
+            description="Time of reactor life from BOL to current time node",
             categories=["depletion"],
         )
 
@@ -214,6 +215,13 @@ def defineCoreParameters():
         )
 
     with pDefs.createBuilder(default=0.0, location="N/A") as pb:
+
+        pb.defParam(
+            "referenceBlockAxialMesh",
+            units="cm",
+            description="The axial block boundaries that assemblies should conform to in a uniform mesh case.",
+            default=None,
+        )
 
         pb.defParam(
             "breedingRatio2",
@@ -539,7 +547,7 @@ def defineCoreParameters():
         pb.defParam(
             "power",
             units="W",
-            description="Rated thermal power of the reactor core. Corresponds to the "
+            description="Thermal power of the reactor core. Corresponds to the "
             "nuclear power generated in the core.",
         )
 

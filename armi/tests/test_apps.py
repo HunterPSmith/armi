@@ -68,8 +68,10 @@ class TestApps(unittest.TestCase):
     """Test the base apps.App interfaces."""
 
     def setUp(self):
-        """Manipulate the standard App. We can't just configure our own, since the
-        pytest environment bleeds between tests :("""
+        """
+        Manipulate the standard App. We can't just configure our own, since the
+        pytest environment bleeds between tests.
+        """
         self._backupApp = copy.deepcopy(getApp())
 
     def tearDown(self):
@@ -118,6 +120,29 @@ class TestApps(unittest.TestCase):
         ):
             app.getParamRenames()
 
+    def test_getParamRenamesInvalids(self):
+        # a basic test of the method
+        app = getApp()
+        app.pluginManager.register(TestPlugin1)
+        app.pluginManager.register(TestPlugin4)
+        app._paramRenames = None  # need to implement better cache invalidation rules
+
+        renames = app.getParamRenames()
+
+        self.assertIn("oldType", renames)
+        self.assertEqual(renames["oldType"], "type")
+        self.assertIn("arealPD", renames)
+        self.assertEqual(renames["arealPD"], "arealPowerDensity")
+
+        # test the strange, invalid case
+        self.assertIsNotNone(app._paramRenames)
+        app._pm._counter = -1
+        renames = app.getParamRenames()
+        self.assertIn("oldType", renames)
+        self.assertEqual(renames["oldType"], "type")
+        self.assertIn("arealPD", renames)
+        self.assertEqual(renames["arealPD"], "arealPowerDensity")
+
     def test_version(self):
         app = getApp()
         ver = app.version
@@ -163,7 +188,7 @@ class TestArmi(unittest.TestCase):
         pm = getDefaultPluginManager()
         pm2 = getDefaultPluginManager()
 
-        self.assertTrue(pm is not pm2)
+        self.assertNotEqual(pm, pm2)
         self.assertIn(cli.EntryPointsPlugin, pm.get_plugins())
 
     def test_overConfigured(self):

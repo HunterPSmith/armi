@@ -159,9 +159,7 @@ class Interface:
         return "<Interface {0}>".format(self.name)
 
     def _checkSettings(self):
-        """
-        Raises an exception if interface settings requirements are not met
-        """
+        """Raises an exception if interface settings requirements are not met"""
         pass
 
     def nameContains(self, name):
@@ -190,9 +188,7 @@ class Interface:
         return {}
 
     def postDistributeState(self, toRestore):  # pylint: disable=no-self-use
-        """
-        Restore non-distributable attributes after a distributeState
-        """
+        """Restore non-distributable attributes after a distributeState"""
         pass
 
     def attachReactor(self, o, r):
@@ -208,7 +204,7 @@ class Interface:
 
         Notes
         -----
-        This runs on all worker nodes as well as the master.
+        This runs on all worker nodes as well as the primary.
         """
         self.r = r
         self.cs = o.cs
@@ -320,7 +316,7 @@ class Interface:
         pass
 
     def interactDistributeState(self):
-        """Called after this interface is copied to a different (non-master) MPI node."""
+        """Called after this interface is copied to a different (non-primary) MPI node."""
         pass
 
     def isRequestedDetailPoint(self, cycle=None, node=None):

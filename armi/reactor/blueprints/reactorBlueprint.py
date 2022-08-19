@@ -159,7 +159,7 @@ class SystemBlueprint(yamlize.Object):
         )
         system.spatialLocator = spatialLocator
         if context.MPI_RANK != 0:
-            # on non-master nodes we don't bother building up the assemblies
+            # on non-primary nodes we don't bother building up the assemblies
             # because they will be populated with DistributeState.
             return None
 
@@ -167,7 +167,7 @@ class SystemBlueprint(yamlize.Object):
         # with non-Core-like structure. Again, probably only doable with subclassing of
         # Blueprints
         if loadAssems:
-            self._loadAssemblies(cs, system, gridDesign, gridDesign.gridContents, bp)
+            self._loadAssemblies(cs, system, gridDesign.gridContents, bp)
 
             # TODO: This post-construction work is specific to Cores for now. We need to
             # generalize this. Things to consider:
@@ -184,7 +184,7 @@ class SystemBlueprint(yamlize.Object):
         return system
 
     # pylint: disable=no-self-use
-    def _loadAssemblies(self, cs, container, gridDesign, gridContents, bp):
+    def _loadAssemblies(self, cs, container, gridContents, bp):
         runLog.header(
             "=========== Adding Assemblies to {} ===========".format(container)
         )

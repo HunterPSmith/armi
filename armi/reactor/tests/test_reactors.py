@@ -61,7 +61,7 @@ def buildOperatorOfEmptyHexBlocks(customSettings=None):
 
     customSettings["db"] = False  # stop use of database
     cs = cs.modified(newSettings=customSettings)
-    settings.setMasterCs(cs)  # reset so everything matches master
+    settings.setMasterCs(cs)  # reset so everything matches the primary Cs
 
     r = tests.getEmptyHexReactor()
     r.core.setOptionsFromCs(cs)
@@ -172,17 +172,12 @@ def loadTestReactor(
 
     # Overwrite settings if desired
     if customSettings:
-        newSettings = {}
-        for settingKey, settingVal in customSettings.items():
-            newSettings[settingKey] = settingVal
-
-        cs = cs.modified(newSettings=newSettings)
+        cs = cs.modified(newSettings=customSettings)
 
     if "verbosity" not in customSettings:
         runLog.setVerbosity("error")
 
     newSettings = {}
-    newSettings["nCycles"] = 3
     cs = cs.modified(newSettings=newSettings)
     settings.setMasterCs(cs)
 
@@ -220,7 +215,9 @@ class ReactorTests(unittest.TestCase):
 
 class HexReactorTests(ReactorTests):
     def setUp(self):
-        self.o, self.r = loadTestReactor(self.directoryChanger.destination)
+        self.o, self.r = loadTestReactor(
+            self.directoryChanger.destination, customSettings={"trackAssems": True}
+        )
 
     def test_getTotalParam(self):
         # verify that the block params are being read.
@@ -229,7 +226,7 @@ class HexReactorTests(ReactorTests):
         self.assertEqual(val2 / self.r.core.powerMultiplier, val)
 
     def test_geomType(self):
-        self.assertTrue(self.r.core.geomType == geometry.GeomType.HEX)
+        self.assertEqual(self.r.core.geomType, geometry.GeomType.HEX)
 
     def test_growToFullCore(self):
         nAssemThird = len(self.r.core)
@@ -508,10 +505,10 @@ class HexReactorTests(ReactorTests):
         newA = copy.deepcopy(a)
         newA.name = None
         self.r.p.cycle = 1
-        self.assertTrue(len(list(self.r.core.genAssembliesAddedThisCycle())) == 0)
+        self.assertEqual(len(list(self.r.core.genAssembliesAddedThisCycle())), 0)
         self.r.core.removeAssembly(a)
         self.r.core.add(newA)
-        self.assertTrue(next(self.r.core.genAssembliesAddedThisCycle()) is newA)
+        self.assertEqual(next(self.r.core.genAssembliesAddedThisCycle()), newA)
 
     def test_getAssemblyPitch(self):
         self.assertEqual(self.r.core.getAssemblyPitch(), 16.75)
@@ -521,6 +518,16 @@ class HexReactorTests(ReactorTests):
         nAssmWithBlanks = self.r.core.getNumAssembliesWithAllRingsFilledOut(nRings)
         self.assertEqual(77, nAssmWithBlanks)
 
+    def test_getNumEnergyGroups(self):
+        # this Core doesn't have a loaded ISOTXS library, so this test is minimally useful
+        with self.assertRaises(AttributeError):
+            self.r.core.getNumEnergyGroups()
+
+    def test_getMinimumPercentFluxInFuel(self):
+        # there is no flux in the test reactor YET, so this test is minimally useful
+        with self.assertRaises(ZeroDivisionError):
+            _targetRing, _fluxFraction = self.r.core.getMinimumPercentFluxInFuel()
+
     def test_getAssembly(self):
         a1 = self.r.core.getAssemblyWithAssemNum(assemNum=10)
         a2 = self.r.core.getAssembly(locationString="005-023")
@@ -528,24 +535,10 @@ class HexReactorTests(ReactorTests):
         self.assertEqual(a1, a2)
         self.assertEqual(a1, a3)
 
-    def test_countAssemblies(self):
-        """Tests that the users definition of assemblies is preserved.
-
-        .. test:: Tests that the users definition of assembilies is preserved.
-            :id: TEST_REACTOR_3
-            :links: REQ_REACTOR
-        """
-        nFuel = self.r.core.countAssemblies(Flags.FUEL)
-        self.assertEqual(2, nFuel)
-        nFuel_r3 = self.r.core.countAssemblies(Flags.FUEL, ring=3)
-        self.assertEqual(1, nFuel_r3)
-        nFuel = self.r.core.countAssemblies(Flags.FUEL, fullCore=True)
-        self.assertEqual(6, nFuel)
-
     def test_restoreReactor(self):
         aListLength = len(self.r.core.getAssemblies())
         converter = self.r.core.growToFullCore(self.o.cs)
-        converter.restorePreviousGeometry(self.o.cs, self.r)
+        converter.restorePreviousGeometry(self.r)
         self.assertEqual(aListLength, len(self.r.core.getAssemblies()))
 
     def test_differentNuclideModels(self):
@@ -731,12 +724,40 @@ class HexReactorTests(ReactorTests):
             self.assertNotEqual(aLoc[i], a.spatialLocator)
             self.assertEqual(a.spatialLocator.grid, self.r.core.sfp.spatialGrid)
 
+    def test_removeAssembliesInRingByCount(self):
+        self.assertEqual(self.r.core.getNumRings(), 9)
+        self.r.core.removeAssembliesInRing(9)
+        self.assertEqual(self.r.core.getNumRings(), 8)
+
+    def test_removeAssembliesInRingHex(self):
+        """
+        Since the test reactor is hex, we need to use the overrideCircularRingMode option
+        to remove assemblies from it.
+        """
+        self.assertEqual(self.r.core.getNumRings(), 9)
+        for ringNum in range(6, 10):
+            self.r.core.removeAssembliesInRing(ringNum, overrideCircularRingMode=True)
+        self.assertEqual(self.r.core.getNumRings(), 5)
+
+    def test_getNozzleTypes(self):
+        nozzleTypes = self.r.core.getNozzleTypes()
+        expectedTypes = ["Inner", "Outer", "lta", "Default"]
+        for nozzle in expectedTypes:
+            self.assertIn(nozzle, nozzleTypes)
+
     def test_createAssemblyOfType(self):
         """Test creation of new assemblies."""
         # basic creation
         aOld = self.r.core.getFirstAssembly(Flags.FUEL)
         aNew = self.r.core.createAssemblyOfType(aOld.getType())
         self.assertAlmostEqual(aOld.getMass(), aNew.getMass())
+
+        # test axial mesh alignment
+        aNewMesh = aNew.getAxialMesh()
+        for i, meshValue in enumerate(aNewMesh):
+            self.assertAlmostEqual(
+                meshValue, self.r.core.p.referenceBlockAxialMesh[i + 1]
+            )  # use i+1 to skip 0.0
 
         # creation with modified enrichment
         aNew2 = self.r.core.createAssemblyOfType(aOld.getType(), 0.195)
@@ -753,6 +774,24 @@ class HexReactorTests(ReactorTests):
             aNew3.getFirstBlock(Flags.FUEL).getUraniumMassEnrich(), 0.195
         )
         self.assertAlmostEqual(aNew3.getMass(), bol.getMass())
+
+    def test_createAssemblyOfTypeExpandedCore(self):
+        """Test creation of new assemblies in an expanded core."""
+        # change the mesh of inner blocks
+        mesh = self.r.core.p.referenceBlockAxialMesh[1:]
+        lastIndex = len(mesh) - 1
+        mesh = [val + 5 for val in mesh]
+        mesh[0] -= 5
+        mesh[lastIndex] -= 5
+
+        # expand the core
+        self.r.core.p.referenceBlockAxialMesh = [0] + mesh
+        for a in self.r.core:
+            a.setBlockMesh(mesh)
+        aType = self.r.core.getFirstAssembly(Flags.FUEL).getType()
+
+        # demonstrate we can still create assemblies
+        self.assertTrue(self.r.core.createAssemblyOfType(aType))
 
     def test_getAvgTemp(self):
         t0 = self.r.core.getAvgTemp([Flags.CLAD, Flags.WIRE, Flags.DUCT])
@@ -786,6 +825,12 @@ class HexReactorTests(ReactorTests):
 
         self.assertEqual(0, len(self.r.core.blocksByName))
         self.assertEqual(0, len(self.r.core.assembliesByName))
+
+    def test_pinCoordsAllBlocks(self):
+        """Make sure all blocks can get pin coords."""
+        for b in self.r.core.getBlocks():
+            coords = b.getPinCoordinates()
+            self.assertGreater(len(coords), -1)
 
 
 class CartesianReactorTests(ReactorTests):

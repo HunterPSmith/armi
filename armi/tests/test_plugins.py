@@ -44,7 +44,7 @@ class TestPlugin(unittest.TestCase):
 
         for result in results:
             self.assertIsInstance(result, tuple)
-            self.assertTrue(len(result) == 3)
+            self.assertEqual(len(result), 3)
             self.assertIsInstance(result[0], str)
             self.assertIsInstance(result[1], yamlize.Attribute)
             self.assertTrue(callable(result[2]))
@@ -53,18 +53,19 @@ class TestPlugin(unittest.TestCase):
         """Make sure that the exposeInterfaces hook is properly implemented"""
         if self.plugin is None:
             return
-        if not hasattr(self.plugin, "exposeInterfaces"):
-            return
 
         cs = settings.getMasterCs()
         results = self.plugin.exposeInterfaces(cs)
+        if results is None or not results:
+            return
+
         # each plugin should return a list
         self.assertIsInstance(results, list)
         for result in results:
             # Make sure that all elements in the list satisfy the constraints of the
             # hookspec
             self.assertIsInstance(result, tuple)
-            self.assertTrue(len(result) == 3)
+            self.assertEqual(len(result), 3)
 
             order, interface, kwargs = result
 

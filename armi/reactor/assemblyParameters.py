@@ -17,6 +17,7 @@ Assembly Parameter Definitions
 """
 import numpy
 
+from armi import runLog
 from armi.reactor import parameters
 from armi.reactor.parameters import ParamLocation
 from armi.utils import units
@@ -156,6 +157,36 @@ def getAssemblyParameterDefinitions():
             default=None,
         )
 
+        def _enforceNotesRestrictions(self, value):
+            """Enforces that notes can only be of type str with max length of 1000."""
+            if type(value) != str:
+                runLog.error(
+                    "Values stored in the `notes` parameter must be strings of less"
+                    " than 1000 characters!"
+                )
+                raise ValueError
+            elif len(value) > 1000:
+                runLog.warning(
+                    "Strings stored in the `notes` parameter must be less than 1000"
+                    f" characters. Truncating the note starting with {value[0:15]}..."
+                    " at 1000 characters!"
+                )
+                self._p_notes = value[0:1000]
+            else:
+                self._p_notes = value
+
+        pb.defParam(
+            "notes",
+            units=units.NOT_APPLICABLE,
+            description="A string with notes about the assembly, limited to 1000 characters."
+            " This parameter is not meant to store data. Needlessly storing large strings"
+            " on this parameter for every assembly is potentially unwise from a memory"
+            " perspective.",
+            saveToDB=True,
+            default="",
+            setter=_enforceNotesRestrictions,
+        )
+
         pb.defParam(
             "assyAxialSwellingSF",
             units="mm",
@@ -196,9 +227,12 @@ def getAssemblyParameterDefinitions():
         )
 
         pb.defParam(
-            "crEndingElevation",
+            "crInsertedElevation",
             units="cm",
-            description="The final elevation of the bottom of the control material when fully inserted.",
+            description=(
+                "The final elevation of the bottom of the control material when fully inserted. Note that this should "
+                "be considered a lower elevation than the ``crWithdrawnElevation`` by definition and modeling semantics."
+            ),
             categories=[parameters.Category.assignInBlueprints],
             saveToDB=True,
         )
@@ -211,9 +245,12 @@ def getAssemblyParameterDefinitions():
         )
 
         pb.defParam(
-            "crStartingElevation",
+            "crWithdrawnElevation",
             units="cm",
-            description="The initial starting elevation of the moveable section of a control rod assembly when fully withdrawn.",
+            description=(
+                "The initial starting elevation of the moveable section of a control rod assembly when fully withdrawn.  Note that this should "
+                "be considered a higher elevation than the ``crInsertedElevation`` by definition and modeling semantics."
+            ),
             categories=[parameters.Category.assignInBlueprints],
             saveToDB=True,
         )
@@ -289,6 +326,16 @@ def getAssemblyParameterDefinitions():
             location="?",
             default="defaultAssemType",
             saveToDB=True,
+        )
+
+        pb.defParam(
+            "nozzleType",
+            units="None",
+            description="nozzle type for assembly",
+            location="?",
+            default="Default",
+            saveToDB=True,
+            categories=[parameters.Category.assignInBlueprints],
         )
 
     with pDefs.createBuilder(default=0.0) as pb:

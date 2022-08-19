@@ -232,7 +232,7 @@ class Component(composites.Composite, metaclass=ComponentType):
         self.temperatureInC = Thot
         self.material = None
         self.setProperties(material)
-        self.applyMaterialMassFracsToNumberDensities()  # not necessary when duplicating...
+        self.setNDensFromMassFracsAtTempInC()  # not necessary when duplicating...
         self.setType(name)
         self.p.mergeWith = mergeWith
         self.p.customIsotopicsName = isotopics
@@ -298,9 +298,18 @@ class Component(composites.Composite, metaclass=ComponentType):
                     linkedKey = match.group(2)
                     self.p[dimName] = _DimensionLink((comp, linkedKey))
                 except:
-                    raise KeyError(
-                        "Bad component link `{}` defined as `{}`".format(dimName, value)
-                    )
+                    if value.count(".") > 1:
+                        raise ValueError(
+                            "Component names should not have periods in them: `{}`".format(
+                                value
+                            )
+                        )
+                    else:
+                        raise KeyError(
+                            "Bad component link `{}` defined as `{}`".format(
+                                dimName, value
+                            )
+                        )
 
     def setLink(self, key, otherComp, otherCompKey):
         """Set the dimension link."""
@@ -318,32 +327,44 @@ class Component(composites.Composite, metaclass=ComponentType):
         self.material.parent = self
         self.clearLinkedCache()
 
-    def applyMaterialMassFracsToNumberDensities(self):
+    def setNDensFromMassFracsAtTempInC(self):
         """
-        Set initial (hot) number densities of this component based Material composition.
+        Set number densities for the component based on material mass fractions using hot temperatures.
 
         Notes
         -----
-        We apply the hot-height density reduction here to account for pre-expanded
-        block heights in blueprints.
-        Future temperature changes can be handled by multiplications of 1/(1+dLL)**2
-        instead of 1/(1+dLL)**3 since we have pre-expanded in the axial direction.
+        - the density returned accounts for the radial expansion of the component
+          due to the difference in self.inputTemperatureInC and self.temperatureInC
+        - axial expansion effects are not included here.
+
+        See Also
+        --------
+        self.adjustNDensForHotHeight
         """
-        denistyIfNotPreExpandedAxially = self.material.getProperty(
-            "density", self.temperatureInK
+        density = self.material.getProperty("density", Tc=self.temperatureInC)
+
+        self.p.numberDensities = densityTools.getNDensFromMasses(
+            density, self.material.p.massFrac
         )
 
-        # axial expansion factor must be applied because ARMI expects hot heights
-        # to be entered on assemblies in the blueprints  so that it doesn't have to
-        # handle the problem of fuel axially expanding at a different rate than clad.
+    def adjustNDensForHotHeight(self):
+        """
+        Adjust number densities to account for prescribed hot block heights (axial expansion).
+
+        Notes
+        -----
+        - We apply this hot height density reduction to account for pre-expanded
+          block heights in blueprints.
+        - This is called when inputHeightsConsideredHot: True.
+
+        See Also
+        --------
+        self.setNDensFromMassFracsAtTempInC
+        """
         axialExpansionFactor = 1.0 + self.material.linearExpansionFactor(
             self.temperatureInC, self.inputTemperatureInC
         )
-
-        self.p.numberDensities = densityTools.getNDensFromMasses(
-            denistyIfNotPreExpandedAxially / axialExpansionFactor,
-            self.material.p.massFrac,
-        )
+        self.changeNDensByFactor(1.0 / axialExpansionFactor)
 
     def getProperties(self):
         """Return the active Material object defining thermo-mechanical properties."""
@@ -783,6 +804,18 @@ class Component(composites.Composite, metaclass=ComponentType):
         """Abstract bounding circle method that should be overwritten by each shape subclass."""
         raise NotImplementedError
 
+    def getCircleInnerDiameter(self, Tc=None, cold=False):
+        """Abstract inner circle method that should be overwritten by each shape subclass.
+
+        Notes
+        -----
+        The inner circle is meaningful for annular shapes, i.e., circle with non-zero ID,
+        hexagon with non-zero IP, etc. For shapes with corners (e.g., hexagon, rectangle, etc)
+        the inner circle intersects the corners of the inner bound, opposed to intersecting
+        the "flats".
+        """
+        raise NotImplementedError
+
     def dimensionIsLinked(self, key):
         """True if a the specified dimension is linked to another dimension."""
         return key in self.p and isinstance(self.p[key], _DimensionLink)
@@ -1186,7 +1219,8 @@ def getReactionRateDict(nucName, lib, xsType, mgFlux, nDens):
     Parameters
     ----------
     nucName - str
-        nuclide name -- e.g. 'U235'
+        nuclide name -- e.g. 'U235', 'PU239', etc. Not to be confused with the nuclide
+        _label_, see the nucDirectory module for a description of the difference.
     lib - isotxs
         cross section library
     xsType - str
@@ -1206,7 +1240,8 @@ def getReactionRateDict(nucName, lib, xsType, mgFlux, nDens):
     assume there is no n3n cross section in ISOTXS
 
     """
-    key = "{}{}A".format(nucName, xsType)
+    nucLabel = nuclideBases.byName[nucName].label
+    key = "{}{}A".format(nucLabel, xsType)
     libNuc = lib[key]
     rxnRates = {"n3n": 0}
     for rxName, mgXSs in [

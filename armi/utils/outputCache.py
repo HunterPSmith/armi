@@ -40,12 +40,13 @@ Could probably be, like, a decorate on subprocess but we call subprocess a bunch
 different ways.
 """
 
-import os
-import shutil
 import hashlib
 import json
+import os
+import shutil
 import subprocess
 
+from armi import context
 from armi import runLog
 from armi.utils.pathTools import cleanPath
 
@@ -167,6 +168,7 @@ def deleteCache(cachedFolder):
     if "Output_Cache" not in cachedFolder:
         raise RuntimeError("Cache location must contain safeword: `Output_Cache`.")
     cleanPath(cachedFolder)
+    context.waitAll()
 
 
 def cacheCall(
