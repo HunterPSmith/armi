@@ -861,10 +861,8 @@ class TestFuelHandler(ArmiTestHelper):
             assemblies, newFuelName=fh.r.core.refAssem.getType()
         )
         self.assertEqual(
-            batchCascade,
-            fh.translationFunctions.getCascadesFromLocations(
-                fh, [["002-002", "loadQueue"], ["001-001", "002-001", "loadQueue"]]
-            ),
+            [[assy.getLocation() for assy in assyList] for assyList in batchCascade],
+            [["002-002", "LoadQueue"], ["001-001", "002-001", "LoadQueue"]],
         )
 
         # invalid new fuel
@@ -875,7 +873,7 @@ class TestFuelHandler(ArmiTestHelper):
             diverging=False,
         )
         assemblies = fh.translationFunctions.getRingAssemblies(fh, schedule)
-        with self.assertRaises((NotImplementedError, RuntimeError)):
+        with self.assertRaises(ValueError):
             batchCascade = fh.translationFunctions.buildBatchCascades(
                 assemblies, newFuelName="invalidType"
             )
