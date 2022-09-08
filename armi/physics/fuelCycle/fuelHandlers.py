@@ -932,6 +932,7 @@ class FuelHandler:
             a1StationaryBlocks, oldA1Location, a2StationaryBlocks, oldA2Location
         )
 
+
     def _validateAssemblySwap(
         self, a1StationaryBlocks, oldA1Location, a2StationaryBlocks, oldA2Location
     ):
