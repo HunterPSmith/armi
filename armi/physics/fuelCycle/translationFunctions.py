@@ -276,16 +276,6 @@ def getRingAssemblies(fuelHandler, ringSchedule, circular=False, flags=Flags.FUE
 
     """
 
-    # define basic sorting functions
-    def squaredDistanceFromOrigin(assembly):
-        origin = numpy.array([0.0, 0.0, 0.0])
-        p = numpy.array(assembly.spatialLocator.getLocalCoordinates())
-        return round(((p - origin) ** 2).sum(), 5)
-
-    def assemAngle(assembly):
-        x, y, _ = assembly.spatialLocator.getLocalCoordinates()
-        return round(math.atan2(y, x), 5)
-
     ringAssemblyArray = []
 
     for rings in ringSchedule:
@@ -343,7 +333,7 @@ def getBatchZoneAssembliesFromLocation(
     ------------------------
     core assembly: "xxx-xxx"
     new assembly: "new: assemType"
-    new assembly with modified enrichment: "new: assemType; enrichment: value"
+    new assembly with modified enrichment: "new: assemType; enrichment: uniform value or [block specific values]"
     sfp assembly: "sfp: assemName"
 
     Parameters
@@ -436,8 +426,7 @@ def getBatchZoneAssembliesFromLocation(
                         # is the enrichment changing
                         elif setting.lower() == "enrichment":
                             if assembly and _is_list(value):
-                                enrList = json.loads(value)
-                                fuelEnr = [enr for enr in enrList if enr != 0]
+                                fuelEnr = json.loads(value)
                                 changeBlockLevelEnrichment(assembly, fuelEnr)
 
                             else:
@@ -663,9 +652,11 @@ def changeBlockLevelEnrichment(
     """
 
     if isinstance(enrichmentList, list):
-        if len(assembly.getBlocks(Flags.FUEL)) == len(enrichmentList):
+        # remove non fuel blocks from enrichment list (enrichment = 0)
+        fuelBlockEnrichmentList = [enr for enr in enrichmentList if enr != 0]
+        if len(assembly.getBlocks(Flags.FUEL)) == len(fuelBlockEnrichmentList):
             for block, enrichment in zip(
-                assembly.getBlocks(Flags.FUEL), enrichmentList
+                assembly.getBlocks(Flags.FUEL), fuelBlockEnrichmentList
             ):
                 block.adjustUEnrich(enrichment)
         else:
@@ -679,7 +670,15 @@ def changeBlockLevelEnrichment(
     else:
         raise RuntimeError("{} is not a valid enrichment input".format(enrichmentList))
 
+# define basic sorting functions
+def squaredDistanceFromOrigin(assembly):
+        origin = numpy.array([0.0, 0.0, 0.0])
+        p = numpy.array(assembly.spatialLocator.getLocalCoordinates())
+        return round(((p - origin) ** 2).sum(), 5)
 
+def assemAngle(assembly):
+        x, y, _ = assembly.spatialLocator.getLocalCoordinates()
+        return round(math.atan2(y, x), 5)
 def _defaultSort(assembly):
     origin = numpy.array([0.0, 0.0, 0.0])
     p = numpy.array(assembly.spatialLocator.getLocalCoordinates())
