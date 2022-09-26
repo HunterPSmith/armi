@@ -670,15 +670,19 @@ def changeBlockLevelEnrichment(
     else:
         raise RuntimeError("{} is not a valid enrichment input".format(enrichmentList))
 
+
 # define basic sorting functions
 def squaredDistanceFromOrigin(assembly):
-        origin = numpy.array([0.0, 0.0, 0.0])
-        p = numpy.array(assembly.spatialLocator.getLocalCoordinates())
-        return round(((p - origin) ** 2).sum(), 5)
+    origin = numpy.array([0.0, 0.0, 0.0])
+    p = numpy.array(assembly.spatialLocator.getLocalCoordinates())
+    return round(((p - origin) ** 2).sum(), 5)
+
 
 def assemAngle(assembly):
-        x, y, _ = assembly.spatialLocator.getLocalCoordinates()
-        return round(math.atan2(y, x), 5)
+    x, y, _ = assembly.spatialLocator.getLocalCoordinates()
+    return round(math.atan2(y, x), 5)
+
+
 def _defaultSort(assembly):
     origin = numpy.array([0.0, 0.0, 0.0])
     p = numpy.array(assembly.spatialLocator.getLocalCoordinates())

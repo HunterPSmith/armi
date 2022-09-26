@@ -568,10 +568,8 @@ class TestFuelHandler(ArmiTestHelper):
         # crash on outward jumps with converging
         with self.assertRaises(RuntimeError):
 
-            schedule = (
-                fh.shuffleStructure.translationFunctions.buildRingSchedule(
-                    fh, 1, 17, jumpRingFrom=0
-                )
+            schedule = fh.shuffleStructure.translationFunctions.buildRingSchedule(
+                fh, 1, 17, jumpRingFrom=0
             )
 
         # crash on inward jumps for diverging
@@ -607,10 +605,8 @@ class TestFuelHandler(ArmiTestHelper):
 
         # simple
         schedule = [[2], [1]]
-        assemblies = (
-            fh.shuffleStructure.translationFunctions.getRingAssemblies(
-                fh, schedule
-            )
+        assemblies = fh.shuffleStructure.translationFunctions.getRingAssemblies(
+            fh, schedule
         )
         self.assertEqual(
             [[assy.getLocation() for assy in assyList] for assyList in assemblies],
@@ -701,7 +697,9 @@ class TestFuelHandler(ArmiTestHelper):
         sfpAssembly = fh.translationFunctions.getBatchZoneAssembliesFromLocation(
             fh, [["sfp: {}".format(fh.r.core.sfp.getChildren()[0].getName())]]
         )
-        self.assertEqual(sfpAssembly[0][0].getName(), fh.r.core.sfp.getChildren()[0].getName())
+        self.assertEqual(
+            sfpAssembly[0][0].getName(), fh.r.core.sfp.getChildren()[0].getName()
+        )
         # test invalid sfp assembly
         with self.assertRaises(RuntimeError):
             invalidAssembly = (
@@ -1003,7 +1001,6 @@ class TestFuelHandler(ArmiTestHelper):
         with self.assertRaises(ValueError):
             fh._transferStationaryBlocks(a1, a2)
 
-
     def test_swapCascade(self):
         """
         Test the swapCascade method.
@@ -1013,10 +1010,8 @@ class TestFuelHandler(ArmiTestHelper):
         fh = fuelHandlers.FuelHandler(self.o)
         ss = fh.shuffleStructure.shuffleDataStructure(fh)
         assemLocations = ["002-001", "003-003", "004-002", "005-001", "006-007"]
-        assems = (
-            fh.shuffleStructure.translationFunctions.getCascadesFromLocations(
-                fh, [assemLocations]
-            )
+        assems = fh.shuffleStructure.translationFunctions.getCascadesFromLocations(
+            fh, [assemLocations]
         )
         assemNames = [a.getName() for a in assems[0]]
         # apply a cascade swap to the assemblies
@@ -1027,19 +1022,22 @@ class TestFuelHandler(ArmiTestHelper):
             a.getName()
             for a in fh.shuffleStructure.translationFunctions.getCascadesFromLocations(
                 fh, [assemLocations]
-            )[
-                0
-            ]
+            )[0]
         ]
         for i, assy in enumerate(assemNames):
             self.assertEqual(assy, newAssemNames[i - 1])
-        
+
         # test cascade swap with new assembly
-        assemLocations = ["002-001", "003-003", "004-002", "005-001", "006-007", "new: feed fuel"]
-        assems = (
-            fh.shuffleStructure.translationFunctions.getCascadesFromLocations(
-                fh, [assemLocations]
-            )
+        assemLocations = [
+            "002-001",
+            "003-003",
+            "004-002",
+            "005-001",
+            "006-007",
+            "new: feed fuel",
+        ]
+        assems = fh.shuffleStructure.translationFunctions.getCascadesFromLocations(
+            fh, [assemLocations]
         )
         assemNames = [a.getName() for a in assems[0]]
         # apply a cascade swap to the assemblies
@@ -1050,22 +1048,28 @@ class TestFuelHandler(ArmiTestHelper):
             a.getName()
             for a in fh.shuffleStructure.translationFunctions.getCascadesFromLocations(
                 fh, [assemLocations]
-            )[
-                0
-            ]
+            )[0]
         ]
         for i, assy in enumerate(assemNames):
             if i == 0:
-                self.assertEqual(int(assemNames[-1].split('A')[1])+1, int(newAssemNames[i - 1].split('A')[1]))
+                self.assertEqual(
+                    int(assemNames[-1].split("A")[1]) + 1,
+                    int(newAssemNames[i - 1].split("A")[1]),
+                )
             if i > 0:
                 self.assertEqual(assy, newAssemNames[i - 1])
-        
+
         # test cascade swap with assembly from sfp
-        assemLocations = ["002-001", "003-003", "004-002", "005-001", "006-007", "sfp: {}".format(fh.r.core.sfp.getChildren()[1].getName())]
-        assems = (
-            fh.shuffleStructure.translationFunctions.getCascadesFromLocations(
-                fh, [assemLocations]
-            )
+        assemLocations = [
+            "002-001",
+            "003-003",
+            "004-002",
+            "005-001",
+            "006-007",
+            "sfp: {}".format(fh.r.core.sfp.getChildren()[1].getName()),
+        ]
+        assems = fh.shuffleStructure.translationFunctions.getCascadesFromLocations(
+            fh, [assemLocations]
         )
         assemNames = [a.getName() for a in assems[0]]
         # apply a cascade swap to the assemblies
@@ -1076,14 +1080,11 @@ class TestFuelHandler(ArmiTestHelper):
             a.getName()
             for a in fh.shuffleStructure.translationFunctions.getCascadesFromLocations(
                 fh, [assemLocations[:-1] + ["sfp: {}".format(assemNames[0])]]
-            )[
-                0
-            ]
+            )[0]
         ]
         for i, assy in enumerate(assemNames):
-            self.assertEqual(assy, newAssemNames[i - 1])   
-            
-        
+            self.assertEqual(assy, newAssemNames[i - 1])
+
     def test_dischargeSwap(self):
         """
         Test the dischargeSwap method.
@@ -1228,7 +1229,6 @@ class TestFuelHandler(ArmiTestHelper):
                 a1StationaryBlocks, oldA1Location, a2StationaryBlocks, oldA2Location
             )
 
-
     def test_checkTranslations(self):
         """
         Test the checkTranslations method.
@@ -1251,7 +1251,6 @@ class TestFuelHandler(ArmiTestHelper):
         ss.translations[0].append("String")
         with self.assertRaises(ValueError):
             ss.checkTranslations()
-
 
     def test_validateLocations(self):
         """
