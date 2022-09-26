@@ -317,29 +317,29 @@ class TestFuelHandler(ArmiTestHelper):
         )
         self.assertIsNone(assem)
 
-    def runShuffling(self, fh):
+    def runShuffling(self, fhi):
         """Shuffle fuel and write out a SHUFFLES.txt file."""
-        fh.attachReactor(self.o, self.r)
+        fhi.attachReactor(self.o, self.r)
 
         # so we don't overwrite the version-controlled armiRun-SHUFFLES.txt
         self.o.cs.caseTitle = "armiRun2"
-        fh.interactBOL()
+        fhi.interactBOL()
 
         for cycle in range(3):
             self.r.p.cycle = cycle
-            fh.cycle = cycle
-            fh.manageFuel(cycle)
+            fhi.cycle = cycle
+            fhi.manageFuel(cycle)
             for a in self.r.core.sfp.getChildren():
                 self.assertEqual(a.getLocation(), "SFP")
-        fh.interactEOL()
+        fhi.interactEOL()
 
     # def test_buildEqRingScheduleHelper(self):
     #    fh = fuelHandlers.FuelHandler(self.o)
-    #    ss = fuelHandlers.shuffleStructure.shuffleDataStructure(fh)
+    #    ss = fh.shuffleStructure.shuffleDataStructure(fh)
     #
     #    #ringSettings1 = {'internalRing' : 1, 'externalRings' : 5}
     #    #ss.buildRingShuffle(settings=ringSettings1)
-    #    buildRing1 = fuelHandlers.shuffleStructure.translationFunctions.buildRingSchedule(fh,1,5)
+    #    buildRing1 = fh.shuffleStructure.translationFunctions.buildRingSchedule(fh,1,5)
     #    #buildRing1 = fh.buildEqRingScheduleHelper(ringList1)
     #    self.assertEqual(buildRing1, [[1], [2], [3], [4], [5]])
     #
@@ -423,11 +423,12 @@ class TestFuelHandler(ArmiTestHelper):
         --------
         runShuffling : creates the shuffling file to be read in.
         """
-        fh = self.r.o.getInterface("fuelHandler")
-        ss = fuelHandlers.shuffleStructure.shuffleDataStructure(fh)
-        self.runShuffling(fh)
+        fhi = self.r.o.getInterface("fuelHandler")
+        fh = fuelHandlers.FuelHandler(self.o)
+        ss = fh.shuffleStructure.shuffleDataStructure(fh)
+        self.runShuffling(fhi)
         numblocks = len(self.r.core.getFirstAssembly())
-        moves = fuelHandlers.shuffleStructure.repeatShuffleFunctions.readMoves(
+        moves = fh.shuffleStructure.repeatShuffleFunctions.readMoves(
             "armiRun2-SHUFFLES.txt"
         )
         self.assertEqual(len(moves), 3)
@@ -446,11 +447,11 @@ class TestFuelHandler(ArmiTestHelper):
 
     def test_processTranslationList(self):
         fh = fuelHandlers.FuelHandler(self.o)
-        moves = fuelHandlers.shuffleStructure.repeatShuffleFunctions.readMoves(
+        moves = fh.shuffleStructure.repeatShuffleFunctions.readMoves(
             "armiRun-SHUFFLES.txt"
         )
         translations = (
-            fuelHandlers.shuffleStructure.repeatShuffleFunctions.processTranslationList(
+            fh.shuffleStructure.repeatShuffleFunctions.processTranslationList(
                 fh, moves[2]
             )
         )
@@ -475,8 +476,8 @@ class TestFuelHandler(ArmiTestHelper):
         addSomeDetailAssemblies(hist, assems)
         b = self.o.r.core.getFirstBlock(Flags.FUEL)
         rotNum = b.getRotationNum()
-        fuelHandlers.rotationFunctions.simpleAssemblyRotation(fh)
-        fuelHandlers.rotationFunctions.simpleAssemblyRotation(fh)
+        fh.rotationFunctions.simpleAssemblyRotation(fh)
+        fh.rotationFunctions.simpleAssemblyRotation(fh)
         self.assertEqual(b.getRotationNum(), rotNum + 2)
 
     def test_linPowByPin(self):
@@ -538,7 +539,7 @@ class TestFuelHandler(ArmiTestHelper):
 
         addSomeDetailAssemblies(hist, [assem])
         rotNum = b.getRotationNum()
-        fuelHandlers.rotationFunctions.functionalAssemblyRotation(fh)
+        fh.rotationFunctions.functionalAssemblyRotation(fh)
         self.assertNotEqual(b.getRotationNum(), rotNum)
 
     def test_buildRingSchedule(self):
@@ -558,7 +559,7 @@ class TestFuelHandler(ArmiTestHelper):
         self.assertEqual(schedule, [[1], [2], [3], [4], [5], [6], [7], [8], [9]])
 
         # simple with 1 jump
-        schedule = fuelHandlers.shuffleStructure.translationFunctions.buildRingSchedule(
+        schedule = fh.shuffleStructure.translationFunctions.buildRingSchedule(
             fh, 1, 9, jumpRingFrom=6
         )
 
@@ -568,7 +569,7 @@ class TestFuelHandler(ArmiTestHelper):
         with self.assertRaises(RuntimeError):
 
             schedule = (
-                fuelHandlers.shuffleStructure.translationFunctions.buildRingSchedule(
+                fh.shuffleStructure.translationFunctions.buildRingSchedule(
                     fh, 1, 17, jumpRingFrom=0
                 )
             )
@@ -588,7 +589,7 @@ class TestFuelHandler(ArmiTestHelper):
     def test_buildConvergentRingSchedule(self):
         fh = fuelHandlers.FuelHandler(self.o)
 
-        schedule = fuelHandlers.shuffleStructure.translationFunctions.buildConvergentRingSchedule(
+        schedule = fh.shuffleStructure.translationFunctions.buildConvergentRingSchedule(
             fh, 1, 9
         )
         self.assertEqual(schedule, [[1], [2], [3], [4], [5], [6], [7], [8], [9]])
@@ -607,7 +608,7 @@ class TestFuelHandler(ArmiTestHelper):
         # simple
         schedule = [[2], [1]]
         assemblies = (
-            fuelHandlers.shuffleStructure.translationFunctions.getRingAssemblies(
+            fh.shuffleStructure.translationFunctions.getRingAssemblies(
                 fh, schedule
             )
         )
@@ -618,68 +619,6 @@ class TestFuelHandler(ArmiTestHelper):
                     "002-001",
                     "002-002",
                 ],
-                ["001-001"],
-            ],
-        )
-
-    def test_getBatchZoneAssembliesFromLocation(self):
-        fh = fuelHandlers.FuelHandler(self.o)
-        assemblies = fuelHandlers.shuffleStructure.translationFunctions.getBatchZoneAssembliesFromLocation(
-            fh,
-            [
-                [
-                    "002-001",
-                    "002-002",
-                ],
-                ["001-001"],
-            ],
-        )
-        self.assertEqual(
-            [[assy.getLocation() for assy in assyList] for assyList in assemblies],
-            [
-                [
-                    "002-001",
-                    "002-002",
-                ],
-                ["001-001"],
-            ],
-        )
-
-        # circular ring
-        schedule = [[2], [1]]
-        assemblies = fh.translationFunctions.getRingAssemblies(
-            fh, schedule, circular=True
-        )
-        self.assertEqual(
-            [[assy.getLocation() for assy in assyList] for assyList in assemblies],
-            [
-                ["004-018", "003-001", "004-002", "004-003", "003-003", "004-005"],
-                ["001-001", "003-012", "002-001", "003-002", "002-002"],
-            ],
-        )
-
-        # distance smart sorting
-        fh.cs["circularRingOrder"] = "distanceSmart"
-        schedule = [[3], [2], [1]]
-        assemblies = fh.translationFunctions.getRingAssemblies(fh, schedule)
-        self.assertEqual(
-            [[assy.getLocation() for assy in assyList] for assyList in assemblies],
-            [
-                ["003-012", "003-002", "003-001", "003-003"],
-                ["002-001", "002-002"],
-                ["001-001"],
-            ],
-        )
-
-        # default to distance smart sorting
-        fh.cs["circularRingOrder"] = None
-        schedule = [[3], [2], [1]]
-        assemblies = fh.translationFunctions.getRingAssemblies(fh, schedule)
-        self.assertEqual(
-            [[assy.getLocation() for assy in assyList] for assyList in assemblies],
-            [
-                ["003-012", "003-002", "003-001", "003-003"],
-                ["002-001", "002-002"],
                 ["001-001"],
             ],
         )
@@ -762,6 +701,7 @@ class TestFuelHandler(ArmiTestHelper):
         sfpAssembly = fh.translationFunctions.getBatchZoneAssembliesFromLocation(
             fh, [["sfp: {}".format(fh.r.core.sfp.getChildren()[0].getName())]]
         )
+        self.assertEqual(sfpAssembly[0][0].getName(), fh.r.core.sfp.getChildren()[0].getName())
         # test invalid sfp assembly
         with self.assertRaises(RuntimeError):
             invalidAssembly = (
@@ -944,19 +884,6 @@ class TestFuelHandler(ArmiTestHelper):
         with self.assertRaises(RuntimeError):
             fh.translationFunctions.changeBlockLevelEnrichment(assy, newEnrich)
 
-    def test_buildEqRingSchedule(self):
-        fh = fuelHandlers.FuelHandler(self.o)
-        locSchedule = fh.buildEqRingSchedule([2, 1])
-        self.assertEqual(locSchedule, ["002-001", "002-002", "001-001"])
-
-        fh.cs["circularRingOrder"] = "distanceSmart"
-        locSchedule = fh.buildEqRingSchedule([2, 1])
-        self.assertEqual(locSchedule, ["002-001", "002-002", "001-001"])
-
-        fh.cs["circularRingOrder"] = "somethingCrazy"
-        locSchedule = fh.buildEqRingSchedule([2, 1])
-        self.assertEqual(locSchedule, ["002-001", "002-002", "001-001"])
-
     def test_transferStationaryBlocks(self):
         """
         Test the _transferStationaryBlocks method .
@@ -1084,23 +1011,21 @@ class TestFuelHandler(ArmiTestHelper):
 
         # grab arbitrary fuel assemblies from the core
         fh = fuelHandlers.FuelHandler(self.o)
-        ss = fuelHandlers.shuffleStructure.shuffleDataStructure(fh)
+        ss = fh.shuffleStructure.shuffleDataStructure(fh)
         assemLocations = ["002-001", "003-003", "004-002", "005-001", "006-007"]
         assems = (
-            fuelHandlers.shuffleStructure.translationFunctions.getCascadesFromLocations(
+            fh.shuffleStructure.translationFunctions.getCascadesFromLocations(
                 fh, [assemLocations]
             )
         )
         assemNames = [a.getName() for a in assems[0]]
-
         # apply a cascade swap to the assemblies
         ss.translations = assems
         fh.swapCascade(ss)
-
         # validate the assemblies have been moved
         newAssemNames = [
             a.getName()
-            for a in fuelHandlers.shuffleStructure.translationFunctions.getCascadesFromLocations(
+            for a in fh.shuffleStructure.translationFunctions.getCascadesFromLocations(
                 fh, [assemLocations]
             )[
                 0
@@ -1108,7 +1033,57 @@ class TestFuelHandler(ArmiTestHelper):
         ]
         for i, assy in enumerate(assemNames):
             self.assertEqual(assy, newAssemNames[i - 1])
-
+        
+        # test cascade swap with new assembly
+        assemLocations = ["002-001", "003-003", "004-002", "005-001", "006-007", "new: feed fuel"]
+        assems = (
+            fh.shuffleStructure.translationFunctions.getCascadesFromLocations(
+                fh, [assemLocations]
+            )
+        )
+        assemNames = [a.getName() for a in assems[0]]
+        # apply a cascade swap to the assemblies
+        ss.translations = assems
+        fh.swapCascade(ss)
+        # validate the assemblies have been moved
+        newAssemNames = [
+            a.getName()
+            for a in fh.shuffleStructure.translationFunctions.getCascadesFromLocations(
+                fh, [assemLocations]
+            )[
+                0
+            ]
+        ]
+        for i, assy in enumerate(assemNames):
+            if i == 0:
+                self.assertEqual(int(assemNames[-1].split('A')[1])+1, int(newAssemNames[i - 1].split('A')[1]))
+            if i > 0:
+                self.assertEqual(assy, newAssemNames[i - 1])
+        
+        # test cascade swap with assembly from sfp
+        assemLocations = ["002-001", "003-003", "004-002", "005-001", "006-007", "sfp: {}".format(fh.r.core.sfp.getChildren()[1].getName())]
+        assems = (
+            fh.shuffleStructure.translationFunctions.getCascadesFromLocations(
+                fh, [assemLocations]
+            )
+        )
+        assemNames = [a.getName() for a in assems[0]]
+        # apply a cascade swap to the assemblies
+        ss.translations = assems
+        fh.swapCascade(ss)
+        # validate the assemblies have been moved
+        newAssemNames = [
+            a.getName()
+            for a in fh.shuffleStructure.translationFunctions.getCascadesFromLocations(
+                fh, [assemLocations[:-1] + ["sfp: {}".format(assemNames[0])]]
+            )[
+                0
+            ]
+        ]
+        for i, assy in enumerate(assemNames):
+            self.assertEqual(assy, newAssemNames[i - 1])   
+            
+        
     def test_dischargeSwap(self):
         """
         Test the dischargeSwap method.
@@ -1260,12 +1235,12 @@ class TestFuelHandler(ArmiTestHelper):
         """
 
         fh = fuelHandlers.FuelHandler(self.o)
-        ss = fuelHandlers.shuffleStructure.shuffleDataStructure(fh)
+        ss = fh.shuffleStructure.shuffleDataStructure(fh)
 
         # duplicate in cascade
         assemLocations = ["002-001", "002-001", "004-002", "005-001", "006-007"]
         ss.translations = (
-            fuelHandlers.shuffleStructure.translationFunctions.getCascadesFromLocations(
+            fh.shuffleStructure.translationFunctions.getCascadesFromLocations(
                 fh, [assemLocations]
             )
         )

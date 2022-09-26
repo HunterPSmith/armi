@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from armi.physics.fuelCycle import fuelHandlerFactory
 from armi.physics.fuelCycle import fuelHandlers
 
 
@@ -21,7 +22,8 @@ class EquilibriumShuffler(fuelHandlers.FuelHandler):
     """
 
     def chooseSwaps(self, factorList):
-        ss = fuelHandlers.shuffleStructure.shuffleDataStructure(self)
+        fh = fuelHandlerFactory.fuelHandlerFactory(self.o)
+        ss = fh.shuffleStructure.shuffleDataStructure(self)
         cycleMoves = [
             [(2, 1), (3, 3), (4, 2), (5, 1), (6, 7)],
             [(2, 2), (3, 2), (4, 1), (5, 4), (6, 4)],
@@ -35,7 +37,7 @@ class EquilibriumShuffler(fuelHandlers.FuelHandler):
                 raise RuntimeError("No assembly in {0} {1}".format(ring, pos))
             cascade.append(a.getLocation())
         ss.translations = (
-            fuelHandlers.shuffleStructure.translationFunctions.getCascadesFromLocations(
+            fh.shuffleStructure.translationFunctions.getCascadesFromLocations(
                 self, [cascade]
             )
         )
