@@ -35,8 +35,6 @@ import numpy
 
 from armi.utils.customExceptions import InputError
 from armi.reactor.flags import Flags
-from armi.physics.fuelCycle import shuffleStructure
-from armi.physics.fuelCycle import rotationFunctions
 from armi.utils.mathematics import resampleStepwise
 from armi import runLog
 
@@ -54,9 +52,12 @@ class FuelHandler:
     To use this, simply create an input Python file and point to it by path
     with the ``fuelHandler`` setting. In that file, subclass this object.
     """
-
+    
     # Import functions
+    from armi.physics.fuelCycle import shuffleStructure
+    from armi.physics.fuelCycle import rotationFunctions
     from armi.physics.fuelCycle import translationFunctions
+    
 
     def __init__(self, operator):
         # we need access to the operator to find the core, get settings, grab
@@ -869,7 +870,7 @@ class FuelHandler:
 
 
 
-    def swapCascade(self, assemList):
+    def swapCascade(self, cascInput):
         """
         This function performs a cascade of swaps on a list of assemblies.
 
@@ -884,7 +885,7 @@ class FuelHandler:
 
         """
         # Determine if input is shuffle data structure or single cascade
-        if issubclass(type(cascInput), shuffleStructure.shuffleDataStructure):
+        if issubclass(type(cascInput), self.shuffleStructure.shuffleDataStructure):
             cascInput.checkTranslations()
 
         else:
@@ -912,16 +913,7 @@ class FuelHandler:
                 elif assemList[0].getLocation() == "SFP":
                     self.dischargeSwap(assemList[0], assemList[level + 1])
                 else:
-                    # diverging. Put things on the inside first.
-                    sorter = lambda a: squaredDistanceFromOrigin(a)
-            else:
-                # purely based on distance. Can mix things up in convergent-divergent cases. Prefer distanceSmart
-                sorter = lambda a: squaredDistanceFromOrigin(a)
-            assemsInRing = sorted(assemsInRing, key=sorter)
-            for a in assemsInRing:
-                locationSchedule.append(a.getLocation())
-            lastRing = ring
-        return locationSchedule
+                    self.swapAssemblies(assemList[0], assemList[level + 1])
 
     def buildEqRingScheduleHelper(self, ringSchedule):
         r"""
