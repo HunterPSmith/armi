@@ -38,6 +38,7 @@ from armi.reactor.flags import Flags
 from armi.utils.mathematics import findClosest, resampleStepwise
 from armi.physics.fuelCycle.fuelHandlerFactory import fuelHandlerFactory
 from armi.physics.fuelCycle.fuelHandlerInterface import FuelHandlerInterface
+from armi.physics.fuelCycle import translationFunctions
 
 
 class FuelHandler:
@@ -52,9 +53,6 @@ class FuelHandler:
     To use this, simply create an input Python file and point to it by path
     with the ``fuelHandler`` setting. In that file, subclass this object.
     """
-
-    # Import functions
-    from armi.physics.fuelCycle import translationFunctions
 
     def __init__(self, operator):
         # we need access to the operator to find the core, get settings, grab
