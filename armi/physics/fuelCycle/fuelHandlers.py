@@ -37,6 +37,9 @@ from armi.utils.customExceptions import InputError
 from armi.reactor.flags import Flags
 from armi.utils.mathematics import resampleStepwise
 from armi import runLog
+from armi.physics.fuelCycle import shuffleStructure
+from armi.physics.fuelCycle import rotationFunctions
+from armi.physics.fuelCycle import translationFunctions
 
 
 class FuelHandler:
@@ -51,11 +54,6 @@ class FuelHandler:
     To use this, simply create an input Python file and point to it by path
     with the ``fuelHandler`` setting. In that file, subclass this object.
     """
-
-    # Import functions
-    from armi.physics.fuelCycle import shuffleStructure
-    from armi.physics.fuelCycle import rotationFunctions
-    from armi.physics.fuelCycle import translationFunctions
 
     def __init__(self, operator):
         # we need access to the operator to find the core, get settings, grab
@@ -881,7 +879,7 @@ class FuelHandler:
 
         """
         # Determine if input is shuffle data structure or single cascade
-        if issubclass(type(cascInput), self.shuffleStructure.shuffleDataStructure):
+        if issubclass(type(cascInput), shuffleStructure.shuffleDataStructure):
             cascInput.checkTranslations()
 
         else:
