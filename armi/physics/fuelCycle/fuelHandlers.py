@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """
-This module handles fuel management operations such as shuffling, rotation, and
+This module handles fuel management operations such as translation, rotation, and
 fuel processing (in fluid systems).
 
 The :py:class:`FuelHandlerInterface` instantiates a ``FuelHandler``, which is typically a user-defined

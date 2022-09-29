@@ -546,6 +546,10 @@ class TestFuelHandler(ArmiTestHelper):
         fh = fuelHandlers.FuelHandler(self.o)
 
         # simple divergent
+        schedule = fuelHandlers.translationFunctions.buildRingSchedule(
+            self, 1, 9, diverging=True
+        )
+        self.assertEqual(schedule, [[9], [8], [7], [6], [5], [4], [3], [2], [1]])
         # default inner and outer rings
         schedule = fuelHandlers.translationFunctions.buildRingSchedule(self)
         self.assertEqual(schedule[0][0], 1)
@@ -559,19 +563,15 @@ class TestFuelHandler(ArmiTestHelper):
         self.assertEqual(schedule, [[1], [2], [3], [4], [5], [6], [7], [8], [9]])
 
         # simple with 1 jump
-        schedule = fuelHandlers.shuffleStructure.translationFunctions.buildRingSchedule(
-            fh, 1, 9, jumpRingFrom=6
+        schedule = fuelHandlers.translationFunctions.buildRingSchedule(
+            self, 1, 9, jumpRingFrom=6
         )
-
         self.assertEqual(schedule, [[5], [4], [3], [2], [1], [6], [7], [8], [9]])
 
         # crash on outward jumps with converging
         with self.assertRaises(RuntimeError):
-
-            schedule = (
-                fuelHandlers.shuffleStructure.translationFunctions.buildRingSchedule(
-                    fh, 1, 17, jumpRingFrom=0
-                )
+            schedule = fuelHandlers.translationFunctions.buildRingSchedule(
+                self, 1, 17, jumpRingFrom=0
             )
 
         # crash on inward jumps for diverging
@@ -588,9 +588,8 @@ class TestFuelHandler(ArmiTestHelper):
 
     def test_buildConvergentRingSchedule(self):
         fh = fuelHandlers.FuelHandler(self.o)
-
-        schedule = fuelHandlers.shuffleStructure.translationFunctions.buildConvergentRingSchedule(
-            fh, 1, 9
+        schedule = fuelHandlers.translationFunctions.buildConvergentRingSchedule(
+            self, 1, 9
         )
         self.assertEqual(schedule, [[1], [2], [3], [4], [5], [6], [7], [8], [9]])
 
@@ -607,11 +606,7 @@ class TestFuelHandler(ArmiTestHelper):
 
         # simple
         schedule = [[2], [1]]
-        assemblies = (
-            fuelHandlers.shuffleStructure.translationFunctions.getRingAssemblies(
-                fh, schedule
-            )
-        )
+        assemblies = fuelHandlers.translationFunctions.getRingAssemblies(fh, schedule)
         self.assertEqual(
             [[assy.getLocation() for assy in assyList] for assyList in assemblies],
             [
@@ -619,6 +614,45 @@ class TestFuelHandler(ArmiTestHelper):
                     "002-001",
                     "002-002",
                 ],
+                ["001-001"],
+            ],
+        )
+
+        # circular ring
+        schedule = [[2], [1]]
+        assemblies = fuelHandlers.translationFunctions.getRingAssemblies(
+            fh, schedule, circular=True
+        )
+        self.assertEqual(
+            [[assy.getLocation() for assy in assyList] for assyList in assemblies],
+            [
+                ["004-018", "003-001", "004-002", "004-003", "003-003", "004-005"],
+                ["001-001", "003-012", "002-001", "003-002", "002-002"],
+            ],
+        )
+
+        # distance smart sorting
+        fh.cs["circularRingOrder"] = "distanceSmart"
+        schedule = [[3], [2], [1]]
+        assemblies = fuelHandlers.translationFunctions.getRingAssemblies(fh, schedule)
+        self.assertEqual(
+            [[assy.getLocation() for assy in assyList] for assyList in assemblies],
+            [
+                ["003-012", "003-002", "003-001", "003-003"],
+                ["002-001", "002-002"],
+                ["001-001"],
+            ],
+        )
+
+        # default to distance smart sorting
+        fh.cs["circularRingOrder"] = None
+        schedule = [[3], [2], [1]]
+        assemblies = fuelHandlers.translationFunctions.getRingAssemblies(fh, schedule)
+        self.assertEqual(
+            [[assy.getLocation() for assy in assyList] for assyList in assemblies],
+            [
+                ["003-012", "003-002", "003-001", "003-003"],
+                ["002-001", "002-002"],
                 ["001-001"],
             ],
         )

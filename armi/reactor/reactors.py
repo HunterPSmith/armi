@@ -2308,11 +2308,6 @@ class Core(composites.Composite):
 
         # Generate list of flags that are to be stationary during assembly shuffling
 
-        if len(cs["stationaryBlocks"]) >= 1:
-            self.ValueError(
-                "stationaryBlocks setting is deprecated. Use stationaryBlocksFlags."
-            )
-
         stationaryBlockFlags = []
 
         for stationaryBlockFlagString in cs["stationaryBlockFlags"]:
