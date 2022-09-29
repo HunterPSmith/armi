@@ -333,28 +333,6 @@ class TestFuelHandler(ArmiTestHelper):
                 self.assertEqual(a.getLocation(), "SFP")
         fhi.interactEOL()
 
-    # def test_buildEqRingScheduleHelper(self):
-    #    fh = fuelHandlers.FuelHandler(self.o)
-    #    ss = fuelHandlers.shuffleStructure.shuffleDataStructure(fh)
-    #
-    #    #ringSettings1 = {'internalRing' : 1, 'externalRings' : 5}
-    #    #ss.buildRingShuffle(settings=ringSettings1)
-    #    buildRing1 = fuelHandlers.shuffleStructure.translationFunctions.buildRingSchedule(fh,1,5)
-    #    #buildRing1 = fh.buildEqRingScheduleHelper(ringList1)
-    #    self.assertEqual(buildRing1, [[1], [2], [3], [4], [5]])
-    #
-    #    ringList2 = [1, 5, 9, 6]
-    #    buildRing2 = fh.buildEqRingScheduleHelper(ringList2)
-    #    self.assertEqual(buildRing2, [1, 2, 3, 4, 5, 9, 8, 7, 6])
-    #
-    #    ringList3 = [9, 5, 3, 4, 1, 2]
-    #    buildRing3 = fh.buildEqRingScheduleHelper(ringList3)
-    #    self.assertEqual(buildRing3, [9, 8, 7, 6, 5, 3, 4, 1, 2])
-    #
-    #    ringList4 = [2, 5, 1, 1]
-    #    buildRing1 = fh.buildEqRingScheduleHelper(ringList4)
-    #    self.assertEqual(buildRing1, [2, 3, 4, 5, 1])
-
     def test_repeatShuffles(self):
         r"""
         Builds a dummy core. Does some shuffles. Repeats the shuffles. Checks that it was a perfect repeat.
