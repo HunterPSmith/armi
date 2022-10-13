@@ -194,7 +194,7 @@ def getOptimalAssemblyOrientation(assembly, aPrev):
 
 def repeatAssemblyRotation(fuelHandler):
     r"""
-    Description
+    Repeats assembly rotations based on a previous ARMI run.
     """
 
     rotations = _readRotations(fuelHandler)

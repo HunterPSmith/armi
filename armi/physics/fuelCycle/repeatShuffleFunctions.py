@@ -42,7 +42,7 @@ def getRepeatShuffle(
         The file name of the shuffle history to be repeated
 
     updateExistingEnrichment : bool, optional
-        Logic switch controling if enrichment levels from the previous ARMI run
+        Logic switch controlling if enrichment levels from the previous ARMI run
         are copied to the current ARMI run.
         Default is False
 

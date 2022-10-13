@@ -317,7 +317,7 @@ class TestFuelHandler(ArmiTestHelper):
         )
         self.assertIsNone(assem)
 
-    def runShuffling(self, fhi):
+    def runShuffling(self, fhi, cycleRange=3):
         """Shuffle fuel and write out a SHUFFLES.txt file."""
         fhi.attachReactor(self.o, self.r)
 
@@ -325,7 +325,7 @@ class TestFuelHandler(ArmiTestHelper):
         self.o.cs.caseTitle = "armiRun2"
         fhi.interactBOL()
 
-        for cycle in range(3):
+        for cycle in range(cycleRange):
             self.r.p.cycle = cycle
             fhi.cycle = cycle
             fhi.manageFuel(cycle)
@@ -392,6 +392,89 @@ class TestFuelHandler(ArmiTestHelper):
             fname = f"armiRun2.shuffles_{i}.png"
             if os.path.exists(fname):
                 os.remove(fname)
+
+    def test_buildRepeatShuffles(self):
+        r"""
+        Builds a dummy core. Does a shuffle. Calls shuffleDataStructure method buildRepeatShuffles
+        to generate a universal shuffle data structure repeat of the shuffle.
+
+
+        See Also
+        --------
+        runShuffling : creates the shuffling file to be read in.
+        """
+        # check labels before shuffling:
+        for a in self.r.core.sfp.getChildren():
+            self.assertEqual(a.getLocation(), "SFP")
+
+        # do some shuffles.
+        fhi = self.r.o.getInterface("fuelHandler")
+        self.runShuffling(fhi, cycleRange=1)  # changes caseTitle
+
+        # store locations of each assembly
+        firstPassResults = {}
+        for a in self.r.core.getAssemblies():
+            firstPassResults[a.getLocation()] = a.getName()
+            self.assertNotIn(a.getLocation(), ["SFP", "LoadQueue", "ExCore"])
+
+        # reset core to BOL state
+        # reset assembly counter to get the same assem nums.
+        self.setUp()
+
+        newSettings = {"plotShuffleArrows": True}
+        # now repeat shuffles
+        newSettings["explicitRepeatShuffles"] = "armiRun-SHUFFLES.txt"
+        self.o.cs = self.o.cs.modified(newSettings=newSettings)
+
+        fh = self.r.o.getInterface("fuelHandler")
+        fh = fuelHandlers.FuelHandler(self.o)
+        ss = fuelHandlers.shuffleStructure.shuffleDataStructure(fh)
+        ss.buildRepeatShuffle()
+        fh.swapCascade(ss)
+
+        # make sure the shuffle was repeated perfectly.
+        for a in self.r.core.getAssemblies():
+            self.assertEqual(a.getName(), firstPassResults[a.getLocation()])
+        for a in self.r.core.sfp.getChildren():
+            self.assertEqual(a.getLocation(), "SFP")
+
+        if os.path.exists("armiRun2-SHUFFLES.txt"):
+            # sometimes pytest runs two of these at once.
+            os.remove("armiRun2-SHUFFLES.txt")
+
+        restartFileName = "armiRun2.restart.dat"
+        if os.path.exists(restartFileName):
+            os.remove(restartFileName)
+
+    def test_getRepeatShuffle(self):
+        """
+        Generates an exact replica of a shuffle data structure based on a previous ARMI run.
+        """
+        fh = fuelHandlers.FuelHandler(self.o)
+        ss = fuelHandlers.shuffleStructure.shuffleDataStructure(fh)
+        # read moves from shuffles file using readMoves
+        moves = fuelHandlers.shuffleStructure.repeatShuffleFunctions.readMoves(
+            "armiRun-SHUFFLES.txt"
+        )
+        translations1 = (
+            fuelHandlers.shuffleStructure.repeatShuffleFunctions.processTranslationList(
+                fh, moves[1]
+            )
+        )
+
+        # generate data structure directly by getRepeatShuffle
+        translations2 = (
+            fuelHandlers.shuffleStructure.repeatShuffleFunctions.getRepeatShuffle(
+                fh,
+                "armiRun-SHUFFLES.txt",
+            )
+        )
+
+        for index, assembly in enumerate(translations1[0]):
+            if assembly.getLocation() == "LoadQueue":
+                self.assertEqual(assembly.getType(), translations2[0][index].getType())
+            else:
+                self.assertEqual(assembly, translations2[0][index])
 
     def test_readMoves(self):
         """
@@ -563,6 +646,16 @@ class TestFuelHandler(ArmiTestHelper):
             self, 1, 9, jumpRingTo=6, jumpRingFrom=3, diverging=True
         )
         self.assertEqual(schedule, [[9], [8], [7], [4], [5], [6], [3], [2], [1]])
+
+        # shuffle structure simple
+        ss = fuelHandlers.shuffleStructure.shuffleDataStructure(fh)
+        settings = {"internalRing": 1, "externalRing": 2, "diverging": True}
+        ss.buildRingShuffle(settings)
+        print(ss.translations)
+        self.assertEqual(
+            [[assy.getLocation() for assy in assyList] for assyList in ss.translations],
+            [["002-002", "002-001", "001-001"]],
+        )
 
     def test_buildConvergentRingSchedule(self):
         fh = fuelHandlers.FuelHandler(self.o)
