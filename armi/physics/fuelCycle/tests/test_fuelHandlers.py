@@ -538,13 +538,13 @@ class TestFuelHandler(ArmiTestHelper):
         fh = fuelHandlers.FuelHandler(self.o)
 
         # simple divergent
-        schedule = fuelHandlers.translationFunctions.buildRingSchedule(
+        schedule = fuelHandlers.buildRingSchedule(
             self, 1, 9, diverging=True
         )
         self.assertEqual(schedule, [[9], [8], [7], [6], [5], [4], [3], [2], [1]])
 
         # default inner and outer rings
-        schedule = fuelHandlers.translationFunctions.buildRingSchedule(self)
+        schedule = fuelHandlers.buildRingSchedule(self)
         self.assertEqual(schedule[0][0], 1)
         if fh.r:
             self.assertEqual(schedule[-1][0], fh.r.core.getNumRings())
@@ -552,42 +552,42 @@ class TestFuelHandler(ArmiTestHelper):
             self.assertEqual(schedule[-1][0], 18)
 
         # simple with no jumps
-        schedule = fuelHandlers.translationFunctions.buildRingSchedule(self, 1, 9)
+        schedule = fuelHandlers.buildRingSchedule(self, 1, 9)
         self.assertEqual(schedule, [[1], [2], [3], [4], [5], [6], [7], [8], [9]])
 
         # simple with 1 jump
-        schedule = fuelHandlers.translationFunctions.buildRingSchedule(
+        schedule = fuelHandlers.buildRingSchedule(
             self, 1, 9, jumpRingFrom=6
         )
         self.assertEqual(schedule, [[5], [4], [3], [2], [1], [6], [7], [8], [9]])
 
         # crash on outward jumps with converging
         with self.assertRaises(RuntimeError):
-            schedule = fuelHandlers.translationFunctions.buildRingSchedule(
+            schedule = fuelHandlers.buildRingSchedule(
                 self, 1, 17, jumpRingFrom=0
             )
 
         # crash on inward jumps for diverging
         with self.assertRaises(RuntimeError):
-            schedule = fuelHandlers.translationFunctions.buildRingSchedule(
+            schedule = fuelHandlers.buildRingSchedule(
                 self, 1, 17, jumpRingFrom=5, jumpRingTo=3, diverging=True
             )
 
         # mid way jumping
-        schedule = fuelHandlers.translationFunctions.buildRingSchedule(
+        schedule = fuelHandlers.buildRingSchedule(
             self, 1, 9, jumpRingTo=6, jumpRingFrom=3, diverging=True
         )
         self.assertEqual(schedule, [[9], [8], [7], [4], [5], [6], [3], [2], [1]])
 
     def test_buildConvergentRingSchedule(self):
         fh = fuelHandlers.FuelHandler(self.o)
-        schedule = fuelHandlers.translationFunctions.buildConvergentRingSchedule(
+        schedule = fuelHandlers.buildConvergentRingSchedule(
             self, 1, 9
         )
         self.assertEqual(schedule, [[1], [2], [3], [4], [5], [6], [7], [8], [9]])
 
         # default inner and outer rings
-        schedule = fuelHandlers.translationFunctions.buildConvergentRingSchedule(self)
+        schedule = fuelHandlers.buildConvergentRingSchedule(self)
         self.assertEqual(schedule[0][0], 1)
         if fh.r:
             self.assertEqual(schedule[-1][0], fh.r.core.getNumRings())
@@ -599,7 +599,7 @@ class TestFuelHandler(ArmiTestHelper):
 
         # simple
         schedule = [[2], [1]]
-        assemblies = fuelHandlers.translationFunctions.getRingAssemblies(fh, schedule)
+        assemblies = fuelHandlers.getRingAssemblies(fh, schedule)
         self.assertEqual(
             [[assy.getLocation() for assy in assyList] for assyList in assemblies],
             [
@@ -613,7 +613,7 @@ class TestFuelHandler(ArmiTestHelper):
 
         # circular ring
         schedule = [[2], [1]]
-        assemblies = fuelHandlers.translationFunctions.getRingAssemblies(
+        assemblies = fuelHandlers.getRingAssemblies(
             fh, schedule, circular=True
         )
         self.assertEqual(
@@ -627,7 +627,7 @@ class TestFuelHandler(ArmiTestHelper):
         # distance smart sorting
         fh.cs["circularRingOrder"] = "distanceSmart"
         schedule = [[3], [2], [1]]
-        assemblies = fuelHandlers.translationFunctions.getRingAssemblies(fh, schedule)
+        assemblies = fuelHandlers.getRingAssemblies(fh, schedule)
         self.assertEqual(
             [[assy.getLocation() for assy in assyList] for assyList in assemblies],
             [
@@ -640,7 +640,7 @@ class TestFuelHandler(ArmiTestHelper):
         # default to distance smart sorting
         fh.cs["circularRingOrder"] = None
         schedule = [[3], [2], [1]]
-        assemblies = fuelHandlers.translationFunctions.getRingAssemblies(fh, schedule)
+        assemblies = fuelHandlers.getRingAssemblies(fh, schedule)
         self.assertEqual(
             [[assy.getLocation() for assy in assyList] for assyList in assemblies],
             [
@@ -655,7 +655,7 @@ class TestFuelHandler(ArmiTestHelper):
 
         fh = fuelHandlers.FuelHandler(self.o)
         assemblies = (
-            fuelHandlers.translationFunctions.getBatchZoneAssembliesFromLocation(
+            fuelHandlers.getBatchZoneAssembliesFromLocation(
                 fh,
                 [
                     [
@@ -680,26 +680,26 @@ class TestFuelHandler(ArmiTestHelper):
         # test invalid assembly locations
         with self.assertRaises(RuntimeError):
             invalidAssembly = (
-                fuelHandlers.translationFunctions.getBatchZoneAssembliesFromLocation(
+                fuelHandlers.getBatchZoneAssembliesFromLocation(
                     fh, [["001-002"]]
                 )
             )
         with self.assertRaises(RuntimeError):
             invalidAssembly = (
-                fuelHandlers.translationFunctions.getBatchZoneAssembliesFromLocation(
+                fuelHandlers.getBatchZoneAssembliesFromLocation(
                     fh, [["002-007"]]
                 )
             )
         with self.assertRaises(RuntimeError):
             invalidAssembly = (
-                fuelHandlers.translationFunctions.getBatchZoneAssembliesFromLocation(
+                fuelHandlers.getBatchZoneAssembliesFromLocation(
                     fh, [["{:03d}-001".format(fh.r.core.getNumRings() + 1)]]
                 )
             )
 
         # test new assembly
         newAssembly = (
-            fuelHandlers.translationFunctions.getBatchZoneAssembliesFromLocation(
+            fuelHandlers.getBatchZoneAssembliesFromLocation(
                 fh, [["new: {}".format(fh.r.core.refAssem.getType())]]
             )
         )
@@ -707,7 +707,7 @@ class TestFuelHandler(ArmiTestHelper):
         self.assertEqual(len(newAssembly[0][0]), len(fh.r.core.refAssem))
         # test new assembly with changed enrichment
         newAssembly = (
-            fuelHandlers.translationFunctions.getBatchZoneAssembliesFromLocation(
+            fuelHandlers.getBatchZoneAssembliesFromLocation(
                 fh, [["new: {}; enrichment: 14.5".format(fh.r.core.refAssem.getType())]]
             )
         )
@@ -717,7 +717,7 @@ class TestFuelHandler(ArmiTestHelper):
         # test new assembly with invalid enrichment change
         with self.assertRaises(RuntimeError):
             invalidAssembly = (
-                fuelHandlers.translationFunctions.getBatchZoneAssembliesFromLocation(
+                fuelHandlers.getBatchZoneAssembliesFromLocation(
                     fh,
                     [["new: {}; enrichment: 5,5".format(fh.r.core.refAssem.getType())]],
                 )
@@ -725,21 +725,21 @@ class TestFuelHandler(ArmiTestHelper):
         # test invalid new assembly
         with self.assertRaises(RuntimeError):
             invalidAssembly = (
-                fuelHandlers.translationFunctions.getBatchZoneAssembliesFromLocation(
+                fuelHandlers.getBatchZoneAssembliesFromLocation(
                     fh, [["new: invalidType"]]
                 )
             )
 
         # test sfp assembly
         sfpAssembly = (
-            fuelHandlers.translationFunctions.getBatchZoneAssembliesFromLocation(
+            fuelHandlers.getBatchZoneAssembliesFromLocation(
                 fh, [["sfp: {}".format(fh.r.core.sfp.getChildren()[0].getName())]]
             )
         )
         # test invalid sfp assembly
         with self.assertRaises(RuntimeError):
             invalidAssembly = (
-                fuelHandlers.translationFunctions.getBatchZoneAssembliesFromLocation(
+                fuelHandlers.getBatchZoneAssembliesFromLocation(
                     fh, [["sfp: invalidAssyName"]]
                 )
             )
@@ -747,7 +747,7 @@ class TestFuelHandler(ArmiTestHelper):
         # test invalid assembly setting
         with self.assertRaises((NotImplementedError, RuntimeError)):
             invalidAssembly = (
-                fuelHandlers.translationFunctions.getBatchZoneAssembliesFromLocation(
+                fuelHandlers.getBatchZoneAssembliesFromLocation(
                     fh, [["invalid: 1"]]
                 )
             )
@@ -759,7 +759,7 @@ class TestFuelHandler(ArmiTestHelper):
             return round(((p - origin) ** 2).sum(), 5)
 
         assemblies = (
-            fuelHandlers.translationFunctions.getBatchZoneAssembliesFromLocation(
+            fuelHandlers.getBatchZoneAssembliesFromLocation(
                 fh,
                 [
                     [
@@ -785,7 +785,7 @@ class TestFuelHandler(ArmiTestHelper):
         # test invalid sort function
         with self.assertRaises(RuntimeError):
             assemblies = (
-                fuelHandlers.translationFunctions.getBatchZoneAssembliesFromLocation(
+                fuelHandlers.getBatchZoneAssembliesFromLocation(
                     fh,
                     [
                         [
@@ -807,7 +807,7 @@ class TestFuelHandler(ArmiTestHelper):
             ],
             ["001-001"],
         ]
-        assemblies = fuelHandlers.translationFunctions.getCascadesFromLocations(
+        assemblies = fuelHandlers.getCascadesFromLocations(
             fh, locations
         )
         self.assertEqual(
@@ -818,14 +818,14 @@ class TestFuelHandler(ArmiTestHelper):
     def test_buildBatchCascades(self):
         fh = fuelHandlers.FuelHandler(self.o)
         # converging 2 jumps
-        schedule = fuelHandlers.translationFunctions.buildRingSchedule(
+        schedule = fuelHandlers.buildRingSchedule(
             self, 1, 3, diverging=False
         )
-        assemblies = fuelHandlers.translationFunctions.getRingAssemblies(fh, schedule)
-        batchCascade = fuelHandlers.translationFunctions.buildBatchCascades(assemblies)
+        assemblies = fuelHandlers.getRingAssemblies(fh, schedule)
+        batchCascade = fuelHandlers.buildBatchCascades(assemblies)
         self.assertEqual(
             batchCascade,
-            fuelHandlers.translationFunctions.getCascadesFromLocations(
+            fuelHandlers.getCascadesFromLocations(
                 fh,
                 [
                     ["003-003"],
@@ -837,27 +837,27 @@ class TestFuelHandler(ArmiTestHelper):
         )
 
         # diverging 1 jump
-        schedule = fuelHandlers.translationFunctions.buildRingSchedule(
+        schedule = fuelHandlers.buildRingSchedule(
             self, 1, 2, diverging=True
         )
-        assemblies = fuelHandlers.translationFunctions.getRingAssemblies(fh, schedule)
-        batchCascade = fuelHandlers.translationFunctions.buildBatchCascades(assemblies)
+        assemblies = fuelHandlers.getRingAssemblies(fh, schedule)
+        batchCascade = fuelHandlers.buildBatchCascades(assemblies)
         self.assertEqual(
             batchCascade,
-            fuelHandlers.translationFunctions.getCascadesFromLocations(
+            fuelHandlers.getCascadesFromLocations(
                 fh, [["002-002", "002-001", "001-001"]]
             ),
         )
 
         # diverging 2 jumps
-        schedule = fuelHandlers.translationFunctions.buildRingSchedule(
+        schedule = fuelHandlers.buildRingSchedule(
             self, 1, 3, diverging=True
         )
-        assemblies = fuelHandlers.translationFunctions.getRingAssemblies(fh, schedule)
-        batchCascade = fuelHandlers.translationFunctions.buildBatchCascades(assemblies)
+        assemblies = fuelHandlers.getRingAssemblies(fh, schedule)
+        batchCascade = fuelHandlers.buildBatchCascades(assemblies)
         self.assertEqual(
             batchCascade,
-            fuelHandlers.translationFunctions.getCascadesFromLocations(
+            fuelHandlers.getCascadesFromLocations(
                 fh,
                 [
                     [
@@ -874,14 +874,14 @@ class TestFuelHandler(ArmiTestHelper):
         )
 
         # new fuel
-        schedule = fuelHandlers.translationFunctions.buildRingSchedule(
+        schedule = fuelHandlers.buildRingSchedule(
             self,
             1,
             2,
             diverging=False,
         )
-        assemblies = fuelHandlers.translationFunctions.getRingAssemblies(fh, schedule)
-        batchCascade = fuelHandlers.translationFunctions.buildBatchCascades(
+        assemblies = fuelHandlers.getRingAssemblies(fh, schedule)
+        batchCascade = fuelHandlers.buildBatchCascades(
             assemblies, newFuelName=fh.r.core.refAssem.getType()
         )
         self.assertEqual(
@@ -890,15 +890,15 @@ class TestFuelHandler(ArmiTestHelper):
         )
 
         # invalid new fuel
-        schedule = fuelHandlers.translationFunctions.buildRingSchedule(
+        schedule = fuelHandlers.buildRingSchedule(
             self,
             1,
             2,
             diverging=False,
         )
-        assemblies = fuelHandlers.translationFunctions.getRingAssemblies(fh, schedule)
+        assemblies = fuelHandlers.getRingAssemblies(fh, schedule)
         with self.assertRaises(ValueError):
-            batchCascade = fuelHandlers.translationFunctions.buildBatchCascades(
+            batchCascade = fuelHandlers.buildBatchCascades(
                 assemblies, newFuelName="invalidType"
             )
 
@@ -908,13 +908,13 @@ class TestFuelHandler(ArmiTestHelper):
 
         # Test single enrichment
         newEnrich = 0.16
-        fuelHandlers.translationFunctions.changeBlockLevelEnrichment(assy, newEnrich)
+        fuelHandlers.changeBlockLevelEnrichment(assy, newEnrich)
         for block in assy.getBlocks(Flags.FUEL):
             self.assertAlmostEqual(block.getFissileMassEnrich(), 0.16, delta=1e-6)
 
         # Test enrichment list
         newEnrich = [0.12, 0.14, 0.16]
-        fuelHandlers.translationFunctions.changeBlockLevelEnrichment(assy, newEnrich)
+        fuelHandlers.changeBlockLevelEnrichment(assy, newEnrich)
         for index, block in enumerate(assy.getBlocks(Flags.FUEL)):
             self.assertAlmostEqual(
                 block.getFissileMassEnrich(), newEnrich[index], delta=1e-6
@@ -923,12 +923,12 @@ class TestFuelHandler(ArmiTestHelper):
         # Test invalid enrichment list length and invalid enrichment value
         newEnrich = [0.12, 0.14, 0.16, 0.15]
         with self.assertRaises(RuntimeError):
-            fuelHandlers.translationFunctions.changeBlockLevelEnrichment(
+            fuelHandlers.changeBlockLevelEnrichment(
                 assy, newEnrich
             )
         newEnrich = "a"
         with self.assertRaises(RuntimeError):
-            fuelHandlers.translationFunctions.changeBlockLevelEnrichment(
+            fuelHandlers.changeBlockLevelEnrichment(
                 assy, newEnrich
             )
 
