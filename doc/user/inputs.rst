@@ -384,11 +384,12 @@ A few examples of restart cases:
    algorithmic rotation routines. Valid angles depend on the assembly's
    geometry. Rotations apply to the assembly that ends up at the given location
    once all moves and swaps in that cycle are
-   complete. A cascade with no final destination defaults to discharging the
-   assembly to the spent fuel pool ``SFP``. Assemblies can also be removed from
-   the model entirely by ending with ``ExCore``. When an assembly is sent to the
-   ``SFP`` it is only retained if the ``trackAssems`` setting is True;
-   ``ExCore`` always deletes the assembly.
+   complete. A cascade with no specified discharge destination defaults to discharging 
+   the assembly to ``ExCore`` where it is deleted from memory. 
+   When an assembly is sent to the ``SFP`` it is retained in the ``SFP`` object.
+   If the ``trackAssems`` setting is True, all discharged assemblies are stored in 
+   the ``SFP`` object, regardless of if ``ExCore`` or ``SFP`` is the discharge desination.
+   
    For example::
 
        sequence:

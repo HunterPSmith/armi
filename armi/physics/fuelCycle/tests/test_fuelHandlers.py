@@ -665,7 +665,7 @@ class TestFuelHandler(FuelHandlerTestHelper):
                 AssemblyMove("009-045", "008-004", [], None, None),
                 AssemblyMove("008-004", "007-001", [], None, None),
                 AssemblyMove("007-001", "006-005", [], None, None),
-                AssemblyMove("006-005", "SFP", [], None, None),
+                AssemblyMove("006-005", "ExCore", [], None, None),
                 AssemblyMove("009-045", "009-045", [], None, None, 60.0),
                 AssemblyMove("LoadQueue", "010-046", [0.0, 12.0, 14.0, 15.0, 0.0], "outer fuel", None),
                 AssemblyMove("010-046", "011-046", [], None, None),
@@ -677,7 +677,7 @@ class TestFuelHandler(FuelHandlerTestHelper):
                 AssemblyMove("009-045", "008-004", [], None, None),
                 AssemblyMove("008-004", "007-001", [], None, None),
                 AssemblyMove("007-001", "006-005", [], None, None),
-                AssemblyMove("006-005", "SFP", [], None, None),
+                AssemblyMove("006-005", "ExCore", [], None, None),
                 AssemblyMove("009-045", "009-045", [], None, None, 60.0),
                 AssemblyMove("LoadQueue", "010-046", [0.0, 12.0, 14.0, 15.0, 0.0], "outer fuel", None),
                 AssemblyMove("010-046", "011-046", [], None, None),
@@ -689,7 +689,7 @@ class TestFuelHandler(FuelHandlerTestHelper):
                 AssemblyMove("009-045", "008-004", [], None, None),
                 AssemblyMove("008-004", "007-001", [], None, None),
                 AssemblyMove("007-001", "006-005", [], None, None),
-                AssemblyMove("006-005", "SFP", [], None, None),
+                AssemblyMove("006-005", "ExCore", [], None, None),
                 AssemblyMove("009-045", "009-045", [], None, None, 60.0),
                 AssemblyMove("009-045", "008-004", [], None, None),
                 AssemblyMove("008-004", "009-045", [], None, None),
@@ -710,6 +710,7 @@ class TestFuelHandler(FuelHandlerTestHelper):
             loadNames,
             rotations,
             _,
+            dischargeLocs,
         ) = fh.processMoveList(moves[2])
         self.assertIn("A0073", loadNames)
         self.assertIn(None, loadNames)
@@ -721,10 +722,28 @@ class TestFuelHandler(FuelHandlerTestHelper):
     def test_processMoveList_yaml(self):
         fh = fuelHandlers.FuelHandler(self.o)
         moves = fh.readMovesYaml("armiRun-SHUFFLES.yaml")
-        loadChains, loopChains, enriches, loadTypes, loadNames, rotations, _ = fh.processMoveList(moves[1])
+        loadChains, loopChains, enriches, loadTypes, loadNames, rotations, _, dischargeLocs = fh.processMoveList(
+            moves[1]
+        )
         self.assertEqual(len(loadChains), 2)
         self.assertTrue(any(enriches))
         self.assertTrue(rotations)
+
+    def test_explicitSFPTracksWithoutTracking(self):
+        o, r = test_reactors.loadTestReactor(
+            self.directoryChanger.destination, customSettings={"nCycles": 1, "trackAssems": False}
+        )
+        fh = fuelHandlers.FuelHandler(o)
+        initial = len(r.excore["sfp"])
+        fh.doRepeatShuffle(
+            loadChains=[["009-045"]],
+            loopChains=[],
+            enriches=[[]],
+            loadChargeTypes=["igniter fuel"],
+            loadNames=[None],
+            dischargeLocs=["SFP"],
+        )
+        self.assertEqual(len(r.excore["sfp"]), initial + 1)
 
     def test_getFactorList(self):
         fh = fuelHandlers.FuelHandler(self.o)
