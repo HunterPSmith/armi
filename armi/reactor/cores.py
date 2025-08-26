@@ -347,7 +347,7 @@ class Core(composites.Composite):
         for a in self.getAssemblies(includeAll=True):
             a.lastLocationLabel = a.getLocation()
 
-    def removeAssembly(self, a1, discharge=True):
+    def removeAssembly(self, a1, discharge=True, storeInSFP=False):
         """
         Takes an assembly and puts it out of core.
 
@@ -384,7 +384,7 @@ class Core(composites.Composite):
         a1.p.dischargeTime = self.r.p.time
         self.remove(a1)
 
-        if discharge and self._trackAssems:
+        if discharge and (self._trackAssems or storeInSFP):
             if self.parent.excore.get("sfp") is not None:
                 self.parent.excore.sfp.add(a1)
             else:

@@ -666,7 +666,7 @@ class TestFuelHandler(FuelHandlerTestHelper):
                 AssemblyMove("009-045", "008-004"),
                 AssemblyMove("008-004", "007-001"),
                 AssemblyMove("007-001", "006-005"),
-                AssemblyMove("006-005", "SFP"),
+                AssemblyMove("006-005", "ExCore"),
                 AssemblyMove("009-045", "009-045", rotation=60.0),
                 AssemblyMove("LoadQueue", "010-046", [0.0, 0.12, 0.14, 0.15, 0.0], "outer fuel"),
                 AssemblyMove("010-046", "011-046"),
@@ -678,7 +678,7 @@ class TestFuelHandler(FuelHandlerTestHelper):
                 AssemblyMove("009-045", "008-004"),
                 AssemblyMove("008-004", "007-001"),
                 AssemblyMove("007-001", "006-005"),
-                AssemblyMove("006-005", "SFP"),
+                AssemblyMove("006-005", "ExCore"),
                 AssemblyMove("009-045", "009-045", rotation=60.0),
                 AssemblyMove("LoadQueue", "010-046", [0.0, 0.12, 0.14, 0.15, 0.0], "outer fuel"),
                 AssemblyMove("010-046", "011-046"),
@@ -690,7 +690,7 @@ class TestFuelHandler(FuelHandlerTestHelper):
                 AssemblyMove("009-045", "008-004"),
                 AssemblyMove("008-004", "007-001"),
                 AssemblyMove("007-001", "006-005"),
-                AssemblyMove("006-005", "SFP"),
+                AssemblyMove("006-005", "ExCore"),
                 AssemblyMove("009-045", "008-004"),
                 AssemblyMove("008-004", "009-045"),
                 AssemblyMove("007-001", "006-005"),
@@ -704,10 +704,10 @@ class TestFuelHandler(FuelHandlerTestHelper):
         yaml_text = (
             "sequence:\n"
             "  1:\n"
-            "    - misloadSwap: [\"005-023\", \"006-029\"]\n"
-            "    - cascade: [\"igniter fuel\", \"009-045\", \"008-004\", \"007-001\", \"006-005\"]\n"
+            '    - misloadSwap: ["005-023", "006-029"]\n'
+            '    - cascade: ["igniter fuel", "009-045", "008-004", "007-001", "006-005"]\n'
             "      fuelEnrichment: [0, 0.12, 0.14, 0.15, 0]\n"
-            "    - extraRotations: {\"009-045\": 60}\n"
+            '    - extraRotations: {"009-045": 60}\n'
         )
         with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as tf:
             tf.write(yaml_text)
@@ -749,7 +749,6 @@ class TestFuelHandler(FuelHandlerTestHelper):
         finally:
             os.remove(fname)
 
-
     def test_processMoveList(self):
         fh = fuelHandlers.FuelHandler(self.o)
         moves = fh.readMoves("armiRun-SHUFFLES.txt")
@@ -761,6 +760,7 @@ class TestFuelHandler(FuelHandlerTestHelper):
             loadNames,
             rotations,
             _,
+            dischargeLocs,
         ) = fh.processMoveList(moves[2])
         self.assertIn("A0073", loadNames)
         self.assertIn(None, loadNames)
@@ -769,13 +769,31 @@ class TestFuelHandler(FuelHandlerTestHelper):
         self.assertFalse(loopChains)
         self.assertFalse(rotations)
 
-    def test_processMoveList_yaml(self):
+    def test_processMoveListYaml(self):
         fh = fuelHandlers.FuelHandler(self.o)
         moves = fh.readMovesYaml("armiRun-SHUFFLES.yaml")
-        loadChains, loopChains, enriches, loadTypes, loadNames, rotations, _ = fh.processMoveList(moves[1])
+        loadChains, loopChains, enriches, loadTypes, loadNames, rotations, _, dischargeLocs = fh.processMoveList(
+            moves[1]
+        )
         self.assertEqual(len(loadChains), 2)
         self.assertTrue(any(enriches))
         self.assertTrue(rotations)
+
+    def test_explicitSFPTracksWithoutTracking(self):
+        o, r = test_reactors.loadTestReactor(
+            self.directoryChanger.destination, customSettings={"nCycles": 1, "trackAssems": False}
+        )
+        fh = fuelHandlers.FuelHandler(o)
+        initial = len(r.excore["sfp"])
+        fh.doRepeatShuffle(
+            loadChains=[["009-045"]],
+            loopChains=[],
+            enriches=[[]],
+            loadChargeTypes=["igniter fuel"],
+            loadNames=[None],
+            dischargeLocs=["SFP"],
+        )
+        self.assertEqual(len(r.excore["sfp"]), initial + 1)
 
     def test_getFactorList(self):
         fh = fuelHandlers.FuelHandler(self.o)

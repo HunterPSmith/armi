@@ -849,7 +849,7 @@ class FuelHandler:
                 "Location labels must be non-empty and contain integers."
             )
 
-    def dischargeSwap(self, incoming, outgoing):
+    def dischargeSwap(self, incoming, outgoing, dischargeTo=None):
         """Removes one assembly from the core and replace it with another assembly.
 
         .. impl:: User-specified blocks can be left in place for the discharge swap.
@@ -900,7 +900,10 @@ class FuelHandler:
         # say it happened at the end of the previous cycle by sending cycle-1
         # to removeAssembly, which will look up EOC of last cycle,
         # which, coincidentally is the same time we're at right now at BOC.
-        self.r.core.removeAssembly(outgoing)
+        if dischargeTo and "SFP" in dischargeTo:
+            self.r.core.removeAssembly(outgoing, storeInSFP=True)
+        else:
+            self.r.core.removeAssembly(outgoing)
 
         # adjust the assembly multiplicity so that it does not forget how many it really
         # represents. This allows us to discharge an assembly from any location in
@@ -997,18 +1000,12 @@ class FuelHandler:
 
         # setup the load and loop chains to be run per cycle
         moveList = moves[cycle]
-        (
-            loadChains,
-            loopChains,
-            enriches,
-            loadChargeTypes,
-            loadNames,
-            rotations,
-            _alreadyDone,
-        ) = self.processMoveList(moveList)
+        (loadChains, loopChains, enriches, loadChargeTypes, loadNames, rotations, _alreadyDone, dischargeLocs) = (
+            self.processMoveList(moveList)
+        )
 
         # Now have the move locations
-        moved = self.doRepeatShuffle(loadChains, loopChains, enriches, loadChargeTypes, loadNames)
+        moved = self.doRepeatShuffle(loadChains, loopChains, enriches, loadChargeTypes, loadNames, dischargeLocs)
         self.pendingRotations = rotations
 
         return moved
@@ -1177,7 +1174,7 @@ class FuelHandler:
                     for i in range(len(locs) - 1):
                         moves[cycle].append(AssemblyMove(locs[i], locs[i + 1]))
                     if locs[-1] not in FuelHandler.DISCHARGE_LOCS:
-                        moves[cycle].append(AssemblyMove(locs[-1], "SFP"))
+                        moves[cycle].append(AssemblyMove(locs[-1], "ExCore"))
 
                 elif "misloadSwap" in action:
                     swap = action["misloadSwap"]
@@ -1351,7 +1348,8 @@ class FuelHandler:
         loopChains = []  # moves that don't have discharges
         enriches = []  # enrichments of each loadChain
         loadNames = []  # assembly name of each load assembly (to read from SFP)
-        rotations = []
+        rotations = []  # manual rotations to do after shuffling
+        dischargeLocs = []  # where discharged assemblies end up (SFP or ExCore)
 
         # first handle all charge/discharge chains by looking for things going to SFP
         for move in moveList:
@@ -1374,6 +1372,7 @@ class FuelHandler:
                 enriches.append(enrichList)
                 loadChargeTypes.append(assemType)
                 loadNames.append(loadAssemName)
+                dischargeLocs.append(toLoc)
                 # track all the locations we saw already so we
                 # don't use them in the loop moves.
                 alreadyDone.extend(chain)
@@ -1400,9 +1399,9 @@ class FuelHandler:
 
                 runLog.extra("Loop Chain: {0}".format(chain))
 
-        return loadChains, loopChains, enriches, loadChargeTypes, loadNames, rotations, alreadyDone
+        return loadChains, loopChains, enriches, loadChargeTypes, loadNames, rotations, alreadyDone, dischargeLocs
 
-    def doRepeatShuffle(self, loadChains, loopChains, enriches, loadChargeTypes, loadNames):
+    def doRepeatShuffle(self, loadChains, loopChains, enriches, loadChargeTypes, loadNames, dischargeLocs):
         r"""
         Actually does the fuel movements required to repeat a shuffle order.
 
@@ -1419,6 +1418,8 @@ class FuelHandler:
         loadNames : list
             The assembly names of assemblies that get brought into the core (useful for pulling out
             of SFP for round 2, etc.)
+        dischargeLocs : list
+            The locations where discharged assemblies are sent (``SFP`` or ``ExCore``)
 
         See Also
         --------
@@ -1438,8 +1439,8 @@ class FuelHandler:
         locContents = self.r.core.makeLocationLookup(assemblyLevel=True)
 
         # perform load swaps (with charge/discharge)
-        for assemblyChain, enrichList, assemblyType, assemblyName in zip(
-            loadChains, enriches, loadChargeTypes, loadNames
+        for assemblyChain, enrichList, assemblyType, assemblyName, dischargeLoc in zip(
+            loadChains, enriches, loadChargeTypes, loadNames, dischargeLocs
         ):
             # convert the labels into actual assemblies to be swapped
             assemblyList = self.r.core.getLocationContents(assemblyChain, assemblyLevel=True, locContents=locContents)
@@ -1473,7 +1474,7 @@ class FuelHandler:
 
             # replace the goingOut guy (for continual feed cases)
             runLog.debug("Calling discharge swap with {} and {}".format(loadAssembly, assemblyList[0]))
-            self.dischargeSwap(loadAssembly, assemblyList[0])
+            self.dischargeSwap(loadAssembly, assemblyList[0], dischargeLoc)
             moved.append(loadAssembly)
 
         # shuffle all of the loop chain assemblies (no charge/discharge)
